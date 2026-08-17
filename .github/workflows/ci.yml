@@ -37,14 +37,15 @@ on:
         default: false
         type: boolean
       confirm_production:
-        description: '⚠️ CONFIRM: Deploy to production Docker Hub and NPM?'
+        description: '⚠️ CONFIRM: Deploy to production (ghcr.io + GitHub Packages)?'
         required: false
         default: false
         type: boolean
 
 env:
-  DOCKER_HUB_REPOSITORY: tonyzorin/youtrack-mcp
   GITHUB_REGISTRY: ghcr.io
+  # ghcr.io requires lowercase image names, so this is hardcoded rather than derived from github.repository_owner
+  GHCR_IMAGE: ghcr.io/changemakerstudios/youtrack-mcp
 
 permissions:
   contents: write
@@ -217,10 +218,10 @@ jobs:
         
         # Get version for testing the built dev image
         VERSION=$(python3 -c "exec(open('youtrack_mcp/version.py').read()); print(__version__)")
-        echo "🎯 Testing dev image: tonyzorin/youtrack-mcp:${VERSION}-wip"
-        
+        echo "🎯 Testing dev image: ${{ env.GHCR_IMAGE }}:${VERSION}-wip"
+
         # Test using the actual built Docker image
-        export YOUTRACK_MCP_IMAGE="tonyzorin/youtrack-mcp:${VERSION}-wip"
+        export YOUTRACK_MCP_IMAGE="${{ env.GHCR_IMAGE }}:${VERSION}-wip"
         python -m pytest tests/e2e/ -v --tb=short -m "e2e"
 
   # ==============================
@@ -247,12 +248,6 @@ jobs:
         echo "COMMIT_SHA=$COMMIT_SHA" >> $GITHUB_OUTPUT
         echo "🔨 Building dev version: ${VERSION}-wip"
 
-    - name: Log in to Docker Hub
-      uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_PASSWORD }}
-
     - name: Log in to GitHub Container Registry
       uses: docker/login-action@v3
       with:
@@ -267,10 +262,8 @@ jobs:
         platforms: linux/amd64,linux/arm64
         push: true
         tags: |
-          ${{ env.DOCKER_HUB_REPOSITORY }}:${{ steps.get_version.outputs.VERSION }}-wip
-          ${{ env.DOCKER_HUB_REPOSITORY }}:${{ github.sha }}
-          ${{ env.GITHUB_REGISTRY }}/${{ github.repository_owner }}/youtrack-mcp:${{ steps.get_version.outputs.VERSION }}-wip
-          ${{ env.GITHUB_REGISTRY }}/${{ github.repository_owner }}/youtrack-mcp:${{ github.sha }}
+          ${{ env.GHCR_IMAGE }}:${{ steps.get_version.outputs.VERSION }}-wip
+          ${{ env.GHCR_IMAGE }}:${{ github.sha }}
         labels: |
           org.opencontainers.image.title=YouTrack MCP (Dev Build)
           org.opencontainers.image.description=YouTrack Model Context Protocol Server - Development Build
@@ -285,12 +278,12 @@ jobs:
         echo "🔨 Dev build completed!" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "**Docker Images:**" >> $GITHUB_STEP_SUMMARY
-        echo "- \`${{ env.DOCKER_HUB_REPOSITORY }}:${{ steps.get_version.outputs.VERSION }}-wip\`" >> $GITHUB_STEP_SUMMARY
-        echo "- \`${{ env.DOCKER_HUB_REPOSITORY }}:${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- \`${{ env.GHCR_IMAGE }}:${{ steps.get_version.outputs.VERSION }}-wip\`" >> $GITHUB_STEP_SUMMARY
+        echo "- \`${{ env.GHCR_IMAGE }}:${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "**Usage:**" >> $GITHUB_STEP_SUMMARY
         echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-        echo "docker pull ${{ env.DOCKER_HUB_REPOSITORY }}:${{ steps.get_version.outputs.VERSION }}-wip" >> $GITHUB_STEP_SUMMARY
+        echo "docker pull ${{ env.GHCR_IMAGE }}:${{ steps.get_version.outputs.VERSION }}-wip" >> $GITHUB_STEP_SUMMARY
         echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
 
   # ==============================
@@ -355,12 +348,6 @@ jobs:
           python scripts/version_bump.py $NEW_VERSION
         fi
 
-    - name: Log in to Docker Hub
-      uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_PASSWORD }}
-
     - name: Log in to GitHub Container Registry
       uses: docker/login-action@v3
       with:
@@ -375,10 +362,8 @@ jobs:
         platforms: linux/amd64,linux/arm64
         push: true
         tags: |
-          ${{ env.DOCKER_HUB_REPOSITORY }}:${{ steps.version.outputs.NEW_VERSION }}
-          ${{ env.DOCKER_HUB_REPOSITORY }}:latest
-          ${{ env.GITHUB_REGISTRY }}/${{ github.repository_owner }}/youtrack-mcp:${{ steps.version.outputs.NEW_VERSION }}
-          ${{ env.GITHUB_REGISTRY }}/${{ github.repository_owner }}/youtrack-mcp:latest
+          ${{ env.GHCR_IMAGE }}:${{ steps.version.outputs.NEW_VERSION }}
+          ${{ env.GHCR_IMAGE }}:latest
         labels: |
           org.opencontainers.image.title=YouTrack MCP
           org.opencontainers.image.description=YouTrack Model Context Protocol Server
@@ -400,20 +385,14 @@ jobs:
           ## 🚀 Release v${{ steps.version.outputs.NEW_VERSION }}
           
           ### 🐳 Docker Images
-          - `${{ env.DOCKER_HUB_REPOSITORY }}:${{ steps.version.outputs.NEW_VERSION }}`
-          - `${{ env.DOCKER_HUB_REPOSITORY }}:latest`
-          - `${{ env.GITHUB_REGISTRY }}/${{ github.repository_owner }}/youtrack-mcp:${{ steps.version.outputs.NEW_VERSION }}`
-          - `${{ env.GITHUB_REGISTRY }}/${{ github.repository_owner }}/youtrack-mcp:latest`
-          
+          - `${{ env.GHCR_IMAGE }}:${{ steps.version.outputs.NEW_VERSION }}`
+          - `${{ env.GHCR_IMAGE }}:latest`
+
           ### 📦 Installation
           ```bash
-          # Docker Hub
-          docker pull ${{ env.DOCKER_HUB_REPOSITORY }}:${{ steps.version.outputs.NEW_VERSION }}
-          
-          # GitHub Container Registry  
-          docker pull ${{ env.GITHUB_REGISTRY }}/${{ github.repository_owner }}/youtrack-mcp:${{ steps.version.outputs.NEW_VERSION }}
+          docker pull ${{ env.GHCR_IMAGE }}:${{ steps.version.outputs.NEW_VERSION }}
           ```
-          
+
           ### 🔧 Claude Desktop Configuration
           ```json
           "youtrack": {
@@ -421,7 +400,7 @@ jobs:
             "args": [
               "run", "--rm", "-i",
               "--env-file", ".env",
-              "${{ env.DOCKER_HUB_REPOSITORY }}:${{ steps.version.outputs.NEW_VERSION }}"
+              "${{ env.GHCR_IMAGE }}:${{ steps.version.outputs.NEW_VERSION }}"
             ]
           }
           ```
@@ -451,18 +430,8 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: '18'
-        registry-url: 'https://registry.npmjs.org'
-
-    - name: Check NPM secrets
-      run: |
-        if [ -z "${{ secrets.NPM_TOKEN }}" ]; then
-          echo "❌ NPM_TOKEN secret is not set"
-          echo "Please add NPM_TOKEN secret in repository settings"
-          echo "Get token from: https://www.npmjs.com/settings/tokens"
-          exit 1
-        else
-          echo "✅ NPM_TOKEN secret is configured"
-        fi
+        registry-url: 'https://npm.pkg.github.com'
+        scope: '@changemakerstudios'
 
     - name: Get version from Git
       id: get_version
@@ -540,63 +509,21 @@ jobs:
         
         echo "✅ Package validation passed"
 
-    - name: Publish to npmjs.org
-      run: |
-        echo "🚀 Publishing to npmjs.org..."
-        echo "Package: youtrack-mcp-tonyzorin@${{ steps.get_version.outputs.VERSION }}"
-        npm publish --access public
-      env:
-        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-    - name: Set up Node.js for GitHub Packages
-      uses: actions/setup-node@v4
-      with:
-        node-version: '18'
-        registry-url: 'https://npm.pkg.github.com'
-        scope: '@${{ github.repository_owner }}'
-
-    - name: Prepare for GitHub Packages
-      run: |
-        echo "📦 Preparing for GitHub Packages..."
-        
-        # Create a scoped package for GitHub Packages
-        cp package.json package.json.backup
-        sed -i.bak "s/\"name\": \"youtrack-mcp-tonyzorin\"/\"name\": \"@${{ github.repository_owner }}\/youtrack-mcp\"/" package.json
-        
-        echo "Updated package name for GitHub Packages:"
-        grep '"name"' package.json
-
     - name: Publish to GitHub Packages
       run: |
         echo "🚀 Publishing to GitHub Packages..."
-        echo "Package: @${{ github.repository_owner }}/youtrack-mcp@${{ steps.get_version.outputs.VERSION }}"
+        echo "Package: @changemakerstudios/youtrack-mcp@${{ steps.get_version.outputs.VERSION }}"
         npm publish
       env:
         NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: NPM publish summary
       run: |
-        echo "✅ NPM packages published successfully!" >> $GITHUB_STEP_SUMMARY
+        echo "✅ NPM package published to GitHub Packages!" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**Published Packages:**" >> $GITHUB_STEP_SUMMARY
-        echo "- 📦 [npmjs.org](https://www.npmjs.com/package/youtrack-mcp-tonyzorin): \`youtrack-mcp-tonyzorin@${{ steps.get_version.outputs.VERSION }}\`" >> $GITHUB_STEP_SUMMARY
-        echo "- 📦 [GitHub Packages](https://github.com/${{ github.repository_owner }}/youtrack-mcp/pkgs/npm/youtrack-mcp): \`@${{ github.repository_owner }}/youtrack-mcp@${{ steps.get_version.outputs.VERSION }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- 📦 \`@changemakerstudios/youtrack-mcp@${{ steps.get_version.outputs.VERSION }}\`" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**Installation:**" >> $GITHUB_STEP_SUMMARY
+        echo "**Installation** (requires GitHub PAT with read:packages):" >> $GITHUB_STEP_SUMMARY
         echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-        echo "# npmjs.org (public)" >> $GITHUB_STEP_SUMMARY
-        echo "npm install -g youtrack-mcp-tonyzorin@${{ steps.get_version.outputs.VERSION }}" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "# GitHub Packages (scoped)" >> $GITHUB_STEP_SUMMARY
-        echo "npm install -g @${{ github.repository_owner }}/youtrack-mcp@${{ steps.get_version.outputs.VERSION }} --registry=https://npm.pkg.github.com" >> $GITHUB_STEP_SUMMARY
-        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**Usage:**" >> $GITHUB_STEP_SUMMARY
-        echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-        echo "# Run directly" >> $GITHUB_STEP_SUMMARY
-        echo "npx youtrack-mcp-tonyzorin" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "# Or install globally and run" >> $GITHUB_STEP_SUMMARY
-        echo "npm install -g youtrack-mcp-tonyzorin" >> $GITHUB_STEP_SUMMARY
-        echo "youtrack-mcp-tonyzorin" >> $GITHUB_STEP_SUMMARY
+        echo "npm install -g @changemakerstudios/youtrack-mcp --registry=https://npm.pkg.github.com" >> $GITHUB_STEP_SUMMARY
         echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

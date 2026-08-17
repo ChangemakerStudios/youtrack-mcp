@@ -224,6 +224,7 @@ class BasicOperations:
         issue_id: str,
         summary: Optional[str] = None,
         description: Optional[str] = None,
+        uses_markdown: Optional[bool] = None,
         additional_fields: Optional[Dict[str, Any]] = None,
     ) -> str:
         """
@@ -235,6 +236,7 @@ class BasicOperations:
             issue_id: The issue identifier (e.g., "DEMO-123", "PROJECT-456")
             summary: The new issue summary/title (optional)
             description: The new issue description (optional)
+            uses_markdown: Whether the description uses Markdown rendering (optional)
             additional_fields: Additional fields to update as dict (optional)
 
         Returns:
@@ -245,6 +247,7 @@ class BasicOperations:
                 issue_id=issue_id,
                 summary=summary,
                 description=description,
+                uses_markdown=uses_markdown,
                 additional_fields=additional_fields,
             )
             # Convert Issue object to dict if needed

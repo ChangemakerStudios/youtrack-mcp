@@ -260,6 +260,7 @@ class IssuesClient:
         issue_id: str,
         summary: Optional[str] = None,
         description: Optional[str] = None,
+        uses_markdown: Optional[bool] = None,
         additional_fields: Optional[Dict[str, Any]] = None,
     ) -> Issue:
         """
@@ -269,6 +270,7 @@ class IssuesClient:
             issue_id: The issue ID or readable ID
             summary: The new issue summary
             description: The new issue description
+            uses_markdown: Whether the description is Markdown (sets usesMarkdown)
             additional_fields: Additional fields to update
 
         Returns:
@@ -282,6 +284,9 @@ class IssuesClient:
         if description is not None:
             data["description"] = description
 
+        if uses_markdown is not None:
+            data["usesMarkdown"] = uses_markdown
+
         if additional_fields:
             data.update(additional_fields)
 
@@ -289,8 +294,9 @@ class IssuesClient:
             # Nothing to update
             return self.get_issue(issue_id)
 
-        response = self.client.post(f"issues/{issue_id}", data=data)
-        return Issue.model_validate(response)
+        self.client.post(f"issues/{issue_id}", data=data)
+        # The POST response is a minimal stub; fetch the full issue so callers see the result
+        return self.get_issue(issue_id)
 
     def update_issue_custom_fields(
         self,

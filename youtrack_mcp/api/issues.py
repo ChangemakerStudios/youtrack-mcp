@@ -10,6 +10,7 @@ import re
 from pydantic import BaseModel, Field
 
 from youtrack_mcp.api.client import YouTrackClient, YouTrackAPIError
+from youtrack_mcp.utils import command_issue_ref
 
 logger = logging.getLogger(__name__)
 
@@ -393,7 +394,7 @@ class IssuesClient:
                 try:
                     command_data = {
                         "query": f"State \"{target_state}\"",
-                        "issues": [{"id": issue_id}]
+                        "issues": [command_issue_ref(issue_id)]
                     }
                     
                     logger.info(f"Applying state transition command 'State \"{target_state}\"' to issue {issue_id}")
@@ -494,11 +495,12 @@ class IssuesClient:
         NOT complex objects or ID references.
         """
         try:
-            # Use the proven simple string format that works
+            # Old YouTrack rejects bare string values with "$type is required"
             update_data = {
                 "customFields": [{
                     "name": "State",
-                    "value": target_state  # Simple string value - this is what works!
+                    "$type": "StateIssueCustomField",
+                    "value": {"name": target_state}
                 }]
             }
             
@@ -864,7 +866,7 @@ class IssuesClient:
             for field_name, field_value in custom_fields.items():
                 command_data["query"] += f" {field_name} {field_value}"
             
-            command_data["issues"] = [{"id": issue_id}]
+            command_data["issues"] = [command_issue_ref(issue_id)]
             
             logger.info(f"Applying command-based update for issue {issue_id} with query: {command_data['query']}")
             self.client.post("commands", data=command_data)
@@ -2133,7 +2135,7 @@ class IssuesClient:
             for field_name, field_value in custom_fields.items():
                 command_data["query"] += f" {field_name} {field_value}"
             
-            command_data["issues"] = [{"id": issue_id}]
+            command_data["issues"] = [command_issue_ref(issue_id)]
             
             logger.info(f"Applying command-based update for issue {issue_id} with query: {command_data['query']}")
             self.client.post("commands", data=command_data)

@@ -1,6 +1,6 @@
 {
   "name": "@changemakerstudios/youtrack-mcp",
-  "version": "1.18.0",
+  "version": "1.18.1",
   "description": "A Model Context Protocol (MCP) server for JetBrains YouTrack integration",
   "keywords": [
     "mcp",
@@ -58,4 +58,4 @@
     "x64",
     "arm64"
   ]
-} 
+}

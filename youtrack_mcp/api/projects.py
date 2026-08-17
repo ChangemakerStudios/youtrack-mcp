@@ -472,9 +472,22 @@ class ProjectsClient:
             logger.error(f"Error getting custom field schema for '{field_name}': {str(e)}")
             return None
 
+    _BUNDLE_KINDS = {
+        "EnumProjectCustomField": "enum",
+        "StateProjectCustomField": "state",
+        "OwnedProjectCustomField": "ownedField",
+        "VersionProjectCustomField": "version",
+        "BuildProjectCustomField": "build",
+        "UserProjectCustomField": "user",
+    }
+
     def get_custom_field_allowed_values(self, project_id: str, field_name: str) -> List[Dict[str, Any]]:
         """
         Get allowed values for a custom field in a specific project.
+
+        The bundle id must come from the project field itself (bundle(id));
+        fieldType ids like "enum[1]" describe single/multi arity, not which
+        bundle the field uses.
 
         Args:
             project_id: The project identifier
@@ -484,288 +497,51 @@ class ProjectsClient:
             List of allowed values with id, name, and other properties
         """
         try:
-            # Get field information directly to avoid recursion with get_custom_field_schema
-            fields_query = "field(id,name,fieldType($type,valueType,id)),canBeEmpty,autoAttached"
+            fields_query = "field(id,name),bundle(id,name),$type"
             fields = self.client.get(f"admin/projects/{project_id}/customFields?fields={fields_query}")
-            
+
             field_info = None
+            wanted = field_name.lower()
             for field in fields:
-                if field.get("field", {}).get("name") == field_name:
+                if field.get("field", {}).get("name", "").lower() == wanted:
                     field_info = field
                     break
-            
+
             if not field_info:
                 logger.warning(f"Field '{field_name}' not found in project {project_id}")
                 return []
-            
-            # Extract field type information
-            field_schema = field_info.get("field", {})
-            field_type = field_schema.get("fieldType", {})
-            
-            # More robust field type handling
-            if not isinstance(field_type, dict):
-                logger.warning(f"Field type for '{field_name}' is not a dictionary: {type(field_type)} - {field_type}")
+
+            kind = self._BUNDLE_KINDS.get(field_info.get("$type"))
+            bundle = field_info.get("bundle") or {}
+            bundle_id = bundle.get("id")
+
+            if not kind or not bundle_id:
+                logger.info(f"Field '{field_name}' ({field_info.get('$type')}) has no value bundle")
                 return []
-                
-            value_type = field_type.get("valueType", "")  # enum, state, user, etc.
-            bundle_id = field_type.get("id")  # enum[1], state[1], etc.
-            
-            logger.info(f"Field '{field_name}' - valueType: {value_type}, bundleId: {bundle_id}")
-            
-            if not bundle_id:
-                logger.warning(f"No bundle ID found for field '{field_name}'")
-                return []
-            
-            # For enum fields, we need to resolve the correct bundle
-            if value_type == "enum":
-                # First, try to extract the actual bundle ID from bundle_id string (e.g., "enum[1]" -> "1")
-                actual_bundle_id = None
-                if "[" in bundle_id and "]" in bundle_id:
-                    # Extract index from "enum[1]" format
-                    bundle_index = bundle_id.split("[")[1].split("]")[0]
-                    
-                    # Get all enum bundles and find the one at this index
-                    try:
-                        all_enum_bundles = self.client.get('admin/customFieldSettings/bundles/enum?fields=id,name,values(id,name,description)')
-                        if bundle_index.isdigit():
-                            index = int(bundle_index)
-                            if 0 <= index < len(all_enum_bundles):
-                                target_bundle = all_enum_bundles[index]
-                                actual_bundle_id = target_bundle.get('id')
-                                logger.info(f"Resolved bundle index {index} to bundle ID {actual_bundle_id} ({target_bundle.get('name')})")
-                                
-                                # Return values from the correct bundle
-                                values = target_bundle.get('values', [])
-                                logger.info(f"Found {len(values)} values for field '{field_name}' in bundle '{target_bundle.get('name')}'")
-                                return [
-                                    {
-                                        "name": value.get("name", ""),
-                                        "description": value.get("description", ""),
-                                        "id": value.get("id"),
-                                        **{k: v for k, v in value.items() if k not in ["name", "description", "id"]}  # Include any additional fields like color
-                                    }
-                                    for value in values
-                                ]
-                    except Exception as e:
-                        logger.error(f"Error resolving enum bundle index: {str(e)}")
-                
-                # Fallback: try the bundle_id directly
-                if not actual_bundle_id:
-                    actual_bundle_id = bundle_id.replace("enum[", "").replace("]", "")
-                
-                try:
-                    bundle_data = self.client.get(f"admin/customFieldSettings/bundles/enum/{actual_bundle_id}?fields=id,name,values(id,name,description)")
-                    values = bundle_data.get("values", [])
-                    logger.info(f"Found {len(values)} values for enum field '{field_name}'")
-                    return [
-                        {
-                            "name": value.get("name", ""),
-                            "description": value.get("description", ""),
-                            "id": value.get("id"),
-                            **{k: v for k, v in value.items() if k not in ["name", "description", "id"]}  # Include any additional fields like color
-                        }
-                        for value in values
-                    ]
-                except Exception as e:
-                    logger.error(f"Error getting enum bundle {actual_bundle_id}: {str(e)}")
-                    # Return enhanced guidance instead of empty array
-                    return [
-                        {
-                            "name": "__ENUM_ACCESS_ERROR__",
-                            "description": f"Could not access enum values for field '{field_name}'. This may be due to permissions or configuration issues.",
-                            "id": "access-error",
-                            "type": "guidance",
-                            "bundle_id": actual_bundle_id,
-                            "troubleshooting": [
-                                "Check if you have admin permissions",
-                                "Verify the field is properly configured",
-                                "Try accessing through YouTrack UI: Administration → Custom Fields"
-                            ]
-                        }
-                    ]
-            
-            elif value_type == "state":
-                try:
-                    # Handle both indexed format (state[1]) and direct bundle ID (state-bundle-123)
-                    if "[" in bundle_id and "]" in bundle_id:
-                        # Index-based format: state[1] means the first state bundle (0-based index)
-                        all_bundles = self.client.get("admin/customFieldSettings/bundles/state?fields=id,name,values(id,name,description,isResolved,color)")
-                        
-                        bundle_index = int(bundle_id.split("[")[1].split("]")[0]) - 1  # Convert to 0-based index
-                        if 0 <= bundle_index < len(all_bundles):
-                            target_bundle = all_bundles[bundle_index]
-                            values = target_bundle.get("values", [])
-                            logger.info(f"Found {len(values)} state values for field '{field_name}' from bundle '{target_bundle.get('name')}'")
-                            return [
-                                {
-                                    "name": value.get("name", ""),
-                                    "description": value.get("description", ""),
-                                    "id": value.get("id"),
-                                    "resolved": value.get("isResolved", False),
-                                    "color": value.get("color", {})
-                                }
-                                for value in values
-                            ]
-                        else:
-                            logger.error(f"Bundle index {bundle_index} out of range for {len(all_bundles)} state bundles")
-                            return []
-                    else:
-                        # Direct bundle ID format: get specific bundle
-                        bundle_data = self.client.get(f"admin/customFieldSettings/bundles/state/{bundle_id}?fields=values(id,name,description,isResolved,color)")
-                    
-                    values = bundle_data.get("values", [])
-                    logger.info(f"Found {len(values)} state values for field '{field_name}' from bundle '{bundle_data.get('name', 'unknown')}'")
-                    return [
-                        {
-                            "name": value.get("name", ""),
-                            "description": value.get("description", ""),
-                            "id": value.get("id"),
-                            "resolved": value.get("isResolved", False),
-                            "color": value.get("color", {})
-                        }
-                        for value in values
-                    ]
-                except Exception as e:
-                    logger.error(f"Error getting state bundle {bundle_id}: {str(e)}")
-                    return []
-            
-            elif value_type == "user":
-                try:
-                    # For user fields, get available users
-                    users_data = self.client.get("users?fields=id,login,name,email")
-                    logger.info(f"Found {len(users_data)} users for field '{field_name}'")
-                    return [
-                        {
-                            "name": user.get("name", ""),
-                            "login": user.get("login", ""),
-                            "id": user.get("id"),
-                            "email": user.get("email", "")
-                        }
-                        for user in users_data
-                    ]
-                except Exception as e:
-                    logger.error(f"Error getting users: {str(e)}")
-                    return []
-            
-            elif value_type == "ownedField":
-                try:
-                    # For subsystem/owned fields, get subsystems for this project
-                    subsystems_data = self.client.get(f"admin/projects/{project_id}/subsystems?fields=id,name,description")
-                    logger.info(f"Found {len(subsystems_data)} subsystems for field '{field_name}'")
-                    return [
-                        {
-                            "name": subsystem.get("name", ""),
-                            "description": subsystem.get("description", ""),
-                            "id": subsystem.get("id")
-                        }
-                        for subsystem in subsystems_data
-                    ]
-                except Exception as e:
-                    logger.error(f"Error getting subsystems: {str(e)}")
-                    # Return comprehensive guidance instead of empty array
-                    return [
-                        {
-                            "name": "__CONFIGURATION_NEEDED__",
-                            "description": f"No subsystems configured for project {project_id}. To enable subsystem custom fields:",
-                            "id": "config-required",
-                            "type": "guidance",
-                            "action": "create_subsystems",
-                            "steps": [
-                                "1. Go to YouTrack project settings",
-                                "2. Navigate to 'Subsystems' section", 
-                                "3. Click 'New Subsystem'",
-                                "4. Enter subsystem name and description",
-                                "5. Save to enable subsystem custom fields"
-                            ],
-                            "alternative": "Use the create_subsystem() MCP tool if you have admin permissions"
-                        }
-                    ]
-            
-            elif value_type == "version":
-                try:
-                    # For version fields, get versions for this project
-                    versions_data = self.client.get(f"admin/projects/{project_id}/versions?fields=id,name,description,released,releaseDate")
-                    logger.info(f"Found {len(versions_data)} versions for field '{field_name}'")
-                    return [
-                        {
-                            "name": version.get("name", ""),
-                            "description": version.get("description", ""),
-                            "id": version.get("id"),
-                            "released": version.get("released", False),
-                            "releaseDate": version.get("releaseDate")
-                        }
-                        for version in versions_data
-                    ]
-                except Exception as e:
-                    logger.error(f"Error getting versions: {str(e)}")
-                    # Return comprehensive guidance instead of empty array
-                    return [
-                        {
-                            "name": "__CONFIGURATION_NEEDED__",
-                            "description": f"No versions configured for project {project_id}. To enable version custom fields:",
-                            "id": "config-required",
-                            "type": "guidance",
-                            "action": "create_versions",
-                            "steps": [
-                                "1. Go to YouTrack project settings",
-                                "2. Navigate to 'Versions' section",
-                                "3. Click 'New Version'", 
-                                "4. Enter version name (e.g., 'v1.0.0')",
-                                "5. Set release status and dates",
-                                "6. Save to enable version custom fields"
-                            ],
-                            "alternative": "Use the create_version() MCP tool if you have admin permissions",
-                            "examples": ["v1.0.0", "2024.1", "Sprint-1", "Release-Jan-2024"]
-                        },
-                        {
-                            "name": "__FALLBACK_OPTION__",
-                            "description": "Alternative: Use text fields or comments to track version information until versions are configured",
-                            "id": "fallback-text",
-                            "type": "workaround",
-                            "suggested_approach": "Use description field or comments to mention version information"
-                        }
-                    ]
-            
-            elif value_type == "build":
-                try:
-                    # For build fields, get builds for this project
-                    builds_data = self.client.get(f"admin/projects/{project_id}/builds?fields=id,name,description")
-                    logger.info(f"Found {len(builds_data)} builds for field '{field_name}'")
-                    return [
-                        {
-                            "name": build.get("name", ""),
-                            "description": build.get("description", ""),
-                            "id": build.get("id")
-                        }
-                        for build in builds_data
-                    ]
-                except Exception as e:
-                    logger.error(f"Error getting builds: {str(e)}")
-                    # Return comprehensive guidance instead of empty array
-                    return [
-                        {
-                            "name": "__CONFIGURATION_NEEDED__",
-                            "description": f"No builds configured for project {project_id}. To enable build custom fields:",
-                            "id": "config-required", 
-                            "type": "guidance",
-                            "action": "create_builds",
-                            "steps": [
-                                "1. Go to YouTrack project settings",
-                                "2. Navigate to 'Builds' section",
-                                "3. Click 'New Build'",
-                                "4. Enter build name (e.g., 'build-123')",
-                                "5. Add description and metadata",
-                                "6. Save to enable build custom fields"
-                            ],
-                            "alternative": "Use the create_build() MCP tool if you have admin permissions",
-                            "examples": ["build-123", "nightly-2024-01-15", "release-1.0", "hotfix-001"]
-                        }
-                    ]
-            
-            else:
-                logger.info(f"Field '{field_name}' type '{value_type}' doesn't support allowed values")
-                return []
-            
+
+            if kind == "user":
+                data = self.client.get(
+                    f"admin/customFieldSettings/bundles/user/{bundle_id}?fields=aggregatedUsers(id,login,name,email)"
+                )
+                return data.get("aggregatedUsers") or []
+
+            value_fields = "id,name,description"
+            if kind == "state":
+                value_fields += ",isResolved"
+            elif kind == "version":
+                value_fields += ",released,releaseDate,archived"
+
+            data = self.client.get(
+                f"admin/customFieldSettings/bundles/{kind}/{bundle_id}?fields=values({value_fields})"
+            )
+            values = data.get("values") or []
+            if kind == "state":
+                for value in values:
+                    value["resolved"] = value.get("isResolved", False)
+
+            logger.info(f"Found {len(values)} values for field '{field_name}' from bundle '{bundle.get('name')}'")
+            return values
+
         except Exception as e:
             logger.error(f"Error getting custom field allowed values for '{field_name}': {str(e)}")
             return []

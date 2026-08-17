@@ -17,7 +17,7 @@ import logging
 from typing import Any, Dict
 
 from youtrack_mcp.mcp_wrappers import sync_wrapper
-from youtrack_mcp.utils import format_json_response
+from youtrack_mcp.utils import command_issue_ref, format_json_response
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +91,7 @@ class DedicatedUpdates:
                 try:
                     command_data = {
                         "query": f"State \"{new_state}\"",
-                        "issues": [{"id": issue_id}]
+                        "issues": [command_issue_ref(issue_id)]
                     }
                     
                     self.issues_api.client.post("commands", data=command_data)
@@ -188,6 +188,7 @@ class DedicatedUpdates:
                     
                     return format_json_response({
                         "error": f"State transition failed: {workflow_reason}",
+                        "underlying_error": error_msg,
                         "issue_id": issue_id,
                         "target_state": new_state,
                         "workflow_restriction": True,

@@ -215,181 +215,83 @@ class TestCustomFieldUpdateFixes:
         mock_client.get.assert_called_with(f"admin/projects/DEMO/customFields?fields={expected_query}")
 
     def test_get_custom_field_allowed_values_enum_bundle(self, projects_client, mock_client):
-        """Test getting allowed values for enum bundle."""
-        # Mock the field schema response
+        """Enum fields resolve values from the field's own bundle id."""
         mock_client.get.side_effect = [
-            # First call - get field schema
             [
                 {
-                    "field": {
-                        "id": "priority-field-id",
-                        "name": "Priority",
-                        "fieldType": {
-                            "$type": "EnumBundle",
-                            "valueType": "enum",
-                            "id": "enum-bundle-123"
-                        }
-                    }
+                    "$type": "EnumProjectCustomField",
+                    "field": {"id": "priority-field-id", "name": "Priority"},
+                    "bundle": {"id": "35-40", "name": "Priorities"},
                 }
             ],
-            # Second call - get bundle values
             {
                 "values": [
-                    {
-                        "id": "value-1",
-                        "name": "High",
-                        "description": "High priority",
-                        "color": {"background": "#ff0000"}
-                    },
-                    {
-                        "id": "value-2", 
-                        "name": "Low",
-                        "description": "Low priority",
-                        "color": {"background": "#00ff00"}
-                    }
+                    {"id": "value-1", "name": "High", "description": "High priority"},
+                    {"id": "value-2", "name": "Low", "description": "Low priority"},
                 ]
-            }
-        ]
-        
-        values = projects_client.get_custom_field_allowed_values("DEMO", "Priority")
-        
-        expected_values = [
-            {
-                "name": "High",
-                "description": "High priority", 
-                "id": "value-1",
-                "color": {"background": "#ff0000"}
             },
-            {
-                "name": "Low",
-                "description": "Low priority",
-                "id": "value-2", 
-                "color": {"background": "#00ff00"}
-            }
         ]
-        
-        assert values == expected_values
-        
-        # Verify the bundle API call (updated to match current implementation)
-        assert mock_client.get.call_count == 2
-        mock_client.get.assert_any_call("admin/customFieldSettings/bundles/enum/enum-bundle-123?fields=id,name,values(id,name,description)")
+
+        values = projects_client.get_custom_field_allowed_values("DEMO", "Priority")
+
+        assert values == [
+            {"id": "value-1", "name": "High", "description": "High priority"},
+            {"id": "value-2", "name": "Low", "description": "Low priority"},
+        ]
+        mock_client.get.assert_any_call(
+            "admin/customFieldSettings/bundles/enum/35-40?fields=values(id,name,description)"
+        )
 
     def test_get_custom_field_allowed_values_state_bundle(self, projects_client, mock_client):
-        """Test getting allowed values for state bundle."""
-        # Mock the field schema response  
+        """State fields resolve values from their state bundle, exposing 'resolved'."""
         mock_client.get.side_effect = [
-            # First call - get field schema
             [
                 {
-                    "field": {
-                        "id": "state-field-id",
-                        "name": "State", 
-                        "fieldType": {
-                            "$type": "StateMachineBundle",
-                            "valueType": "state",
-                            "id": "state-bundle-456"
-                        }
-                    }
+                    "$type": "StateProjectCustomField",
+                    "field": {"id": "state-field-id", "name": "State"},
+                    "bundle": {"id": "38-20", "name": "States"},
                 }
             ],
-            # Second call - get bundle values
             {
                 "values": [
-                    {
-                        "id": "state-1",
-                        "name": "Open",
-                        "description": "Issue is open",
-                        "isResolved": False,
-                        "color": {"background": "#0000ff"}
-                    },
-                    {
-                        "id": "state-2",
-                        "name": "Closed", 
-                        "description": "Issue is closed",
-                        "isResolved": True,
-                        "color": {"background": "#808080"}
-                    }
+                    {"id": "state-1", "name": "Open", "description": None, "isResolved": False},
+                    {"id": "state-2", "name": "Closed", "description": None, "isResolved": True},
                 ]
-            }
-        ]
-        
-        values = projects_client.get_custom_field_allowed_values("DEMO", "State")
-        
-        expected_values = [
-            {
-                "name": "Open",
-                "description": "Issue is open",
-                "id": "state-1", 
-                "resolved": False,
-                "color": {"background": "#0000ff"}
             },
-            {
-                "name": "Closed",
-                "description": "Issue is closed", 
-                "id": "state-2",
-                "resolved": True,
-                "color": {"background": "#808080"}
-            }
         ]
-        
-        assert values == expected_values
+
+        values = projects_client.get_custom_field_allowed_values("DEMO", "State")
+
+        assert [v["name"] for v in values] == ["Open", "Closed"]
+        assert [v["resolved"] for v in values] == [False, True]
+        mock_client.get.assert_any_call(
+            "admin/customFieldSettings/bundles/state/38-20?fields=values(id,name,description,isResolved)"
+        )
 
     def test_get_custom_field_allowed_values_user_bundle(self, projects_client, mock_client):
-        """Test getting allowed values for user bundle."""
-        # Mock the field schema response
+        """User fields resolve to the bundle's aggregated users, not the global user list."""
         mock_client.get.side_effect = [
-            # First call - get field schema
             [
                 {
-                    "field": {
-                        "id": "assignee-field-id",
-                        "name": "Assignee",
-                        "fieldType": {
-                            "$type": "UserBundle", 
-                            "valueType": "user",
-                            "id": "user-bundle-789"
-                        }
-                    }
+                    "$type": "UserProjectCustomField",
+                    "field": {"id": "assignee-field-id", "name": "Assignee"},
+                    "bundle": {"id": "68-92", "name": "Assignees"},
                 }
             ],
-            # Second call - get users
-            [
-                {
-                    "id": "user-1",
-                    "login": "john.doe",
-                    "name": "John Doe",
-                    "email": "john.doe@example.com"
-                },
-                {
-                    "id": "user-2", 
-                    "login": "jane.smith",
-                    "name": "Jane Smith",
-                    "email": "jane.smith@example.com"
-                }
-            ]
-        ]
-        
-        values = projects_client.get_custom_field_allowed_values("DEMO", "Assignee")
-        
-        expected_values = [
             {
-                "name": "John Doe",
-                "login": "john.doe",
-                "id": "user-1",
-                "email": "john.doe@example.com"
+                "aggregatedUsers": [
+                    {"id": "user-1", "login": "john.doe", "name": "John Doe", "email": "john.doe@example.com"},
+                    {"id": "user-2", "login": "jane.smith", "name": "Jane Smith", "email": "jane.smith@example.com"},
+                ]
             },
-            {
-                "name": "Jane Smith", 
-                "login": "jane.smith",
-                "id": "user-2",
-                "email": "jane.smith@example.com"
-            }
         ]
-        
-        assert values == expected_values
-        
-        # Verify the users API call
-        mock_client.get.assert_any_call("users?fields=id,login,name,email")
+
+        values = projects_client.get_custom_field_allowed_values("DEMO", "Assignee")
+
+        assert [v["login"] for v in values] == ["john.doe", "jane.smith"]
+        mock_client.get.assert_any_call(
+            "admin/customFieldSettings/bundles/user/68-92?fields=aggregatedUsers(id,login,name,email)"
+        )
 
     def test_get_custom_field_allowed_values_field_not_found(self, projects_client, mock_client):
         """Test when custom field is not found."""

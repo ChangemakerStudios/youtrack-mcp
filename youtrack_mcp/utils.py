@@ -7,6 +7,11 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Union
 
 
+def command_issue_ref(issue_id: str) -> Dict[str, str]:
+    """Commands API wants internal ids under 'id'; readable ids (PROJ-123) go under 'idReadable'."""
+    return {"idReadable": issue_id} if issue_id[:1].isalpha() else {"id": issue_id}
+
+
 def convert_timestamp_to_iso8601(timestamp_ms: int) -> str:
     """
     Convert YouTrack epoch timestamp (in milliseconds) to ISO8601 format in UTC.

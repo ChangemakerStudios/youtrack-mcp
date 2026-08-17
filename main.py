@@ -3,6 +3,9 @@
 YouTrack MCP Server - A Model Context Protocol server for JetBrains YouTrack.
 Uses FastMCP directly for clean stdio/SSE transport support.
 """
+import functools
+import inspect
+import json
 import logging
 import os
 import sys
@@ -22,6 +25,49 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _flatten_result(result):
+    """Collapse JSON-string returns and MCP resource envelopes into plain objects.
+
+    Tools historically return JSON *strings*, which FastMCP wraps as
+    {"result": "<escaped json>"} — clients end up with double/triple-encoded
+    output. Parsing here (and unwrapping {"contents":[{"text": ...}]} resource
+    envelopes) lets FastMCP serialize the object exactly once.
+    """
+    if isinstance(result, str):
+        try:
+            parsed = json.loads(result)
+        except (ValueError, TypeError):
+            return {"text": result}
+        if isinstance(parsed, (dict, list)):
+            return _flatten_result(parsed)
+        return {"result": parsed}
+    if isinstance(result, dict):
+        contents = result.get("contents")
+        if (
+            set(result.keys()) == {"contents"}
+            and isinstance(contents, list)
+            and len(contents) == 1
+            and isinstance(contents[0], dict)
+            and "text" in contents[0]
+        ):
+            return _flatten_result(contents[0]["text"])
+        return result
+    if isinstance(result, list):
+        return {"items": result, "count": len(result)}
+    return {"result": result}
+
+
+def _clean_tool(func):
+    """Wrap a tool so it returns a parsed dict instead of a JSON string."""
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        return _flatten_result(func(*args, **kwargs))
+
+    sig = inspect.signature(func)
+    wrapper.__signature__ = sig.replace(return_annotation=dict)
+    return wrapper
+
+
 def create_server(host: str = "0.0.0.0", port: int = 8000) -> FastMCP:
     """Create and configure the FastMCP server with all tools registered."""
     mcp = FastMCP(
@@ -34,7 +80,7 @@ def create_server(host: str = "0.0.0.0", port: int = 8000) -> FastMCP:
     # Load and register all tools
     tools = load_all_tools()
     for name, func in tools.items():
-        mcp.add_tool(func, name=name)
+        mcp.add_tool(_clean_tool(func), name=name)
 
     logger.info(f"Registered {len(tools)} tools with FastMCP")
     return mcp

@@ -483,11 +483,39 @@ class ResourcesTools:
             logger.exception(f"Error getting issues for project: {project_id}")
             return json.dumps({"error": str(e)})
 
+    def _summarize_issues(self, issues):
+        """Flatten issue rows into compact summaries: key custom fields become top-level values."""
+        summarized = []
+        for issue in issues or []:
+            row = {
+                "idReadable": issue.get("idReadable"),
+                "summary": issue.get("summary"),
+                "project": (issue.get("project") or {}).get("shortName"),
+                "updated": issue.get("updated"),
+                "resolved": issue.get("resolved"),
+                "reporter": (issue.get("reporter") or {}).get("login"),
+                "id": issue.get("id"),
+            }
+            for field in issue.get("customFields") or []:
+                name = field.get("name")
+                if name not in ("State", "Type", "Priority", "Assignee"):
+                    continue
+                value = field.get("value")
+                if isinstance(value, dict):
+                    value = value.get("name") or value.get("login")
+                elif isinstance(value, list):
+                    value = ", ".join(v.get("name", "") for v in value if isinstance(v, dict))
+                row[name.lower()] = value
+            summarized.append(row)
+        return summarized
+
     def get_all_issues(self) -> str:
         """Get all issues as a resource."""
         try:
-            # This would typically use a search with no filters
-            issues = self.client.get("issues", params={"$top": 100})
+            issues = self.client.get(
+                "issues", params={"$top": 100, "fields": self.SEARCH_FIELDS}
+            )
+            issues = self._summarize_issues(issues)
 
             return json.dumps(
                 {
@@ -646,10 +674,20 @@ class ResourcesTools:
             logger.exception(f"Error getting user: {user_id}")
             return json.dumps({"error": str(e)})
 
+    SEARCH_FIELDS = (
+        "id,idReadable,summary,updated,resolved,"
+        "project(shortName),reporter(login),"
+        "customFields(name,value(name,login))"
+    )
+
     def search_issues(self, query: str) -> str:
         """Search issues as a resource."""
         try:
-            results = self.client.get("issues", params={"query": query, "$top": 100})
+            results = self.client.get(
+                "issues",
+                params={"query": query, "$top": 100, "fields": self.SEARCH_FIELDS},
+            )
+            results = self._summarize_issues(results)
 
             return json.dumps(
                 {

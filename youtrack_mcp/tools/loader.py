@@ -365,8 +365,8 @@ def _get_tools_from_class(tool_class: Any) -> Dict[str, Callable]:
 
     # Get all class methods
     for name in dir(tool_class):
-        # Skip special and internal methods
-        if name.startswith("__") or name in ["close", "get_tool_definitions"]:
+        # Skip special, private, and internal methods
+        if name.startswith("_") or name in ["close", "get_tool_definitions"]:
             continue
 
         # Skip Mock-specific methods when testing

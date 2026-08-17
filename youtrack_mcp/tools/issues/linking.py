@@ -39,10 +39,20 @@ class Linking:
 
         FORMAT: link_issues(source_issue_id="SP-123", target_issue_id="SP-456", link_type="Relates")
 
+        The link is applied as the command "{link_type} {target}" ON the source
+        issue, so direction matters for asymmetric types:
+        - Subtask: source=CHILD, target=PARENT (command "subtask of PARENT" runs
+          on the child). Passing the parent as source re-parents the parent
+          under its own child — and since an issue has one parent, repeated
+          calls replace the previous parent.
+        - Depends on: source depends on target.
+        Prefix the phrase with "remove" to delete a link, e.g.
+        link_type="remove subtask of" with the same source/target.
+
         Args:
             source_issue_id: The ID of the source issue (e.g., 'SP-123')
             target_issue_id: The ID of the target issue (e.g., 'SP-456')
-            link_type: The type of link (e.g., 'Relates', 'Duplicates', 'Depends on')
+            link_type: The link phrase (e.g., 'Relates', 'Duplicates', 'Depends on', 'Subtask')
 
         Returns:
             JSON string with the created link data

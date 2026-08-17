@@ -1294,8 +1294,14 @@ class IssuesClient:
         Returns:
             Dictionary containing inward and outward issue links
         """
-        fields = "id,summary,linkType(name,localizedName),direction"
+        fields = (
+            "id,direction,linkType(name,localizedName,sourceToTarget,targetToSource),"
+            "issues(idReadable,summary,resolved)"
+        )
         response = self.client.get(f"issues/{issue_id}/links?fields={fields}")
+        # Drop empty link-type slots so output shows only real links
+        if isinstance(response, list):
+            response = [link for link in response if link.get("issues")]
         return response
 
     def get_available_link_types(self) -> dict:
@@ -2596,8 +2602,14 @@ class IssuesClient:
         Returns:
             Dictionary containing inward and outward issue links
         """
-        fields = "id,summary,linkType(name,localizedName),direction"
+        fields = (
+            "id,direction,linkType(name,localizedName,sourceToTarget,targetToSource),"
+            "issues(idReadable,summary,resolved)"
+        )
         response = self.client.get(f"issues/{issue_id}/links?fields={fields}")
+        # Drop empty link-type slots so output shows only real links
+        if isinstance(response, list):
+            response = [link for link in response if link.get("issues")]
         return response
 
     def get_available_link_types(self) -> dict:

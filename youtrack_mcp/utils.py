@@ -89,4 +89,15 @@ def format_json_response(data: Any) -> str:
     enhanced_data = add_iso8601_timestamps(data)
 
     # Return formatted JSON
-    return json.dumps(enhanced_data, indent=2)
+    return json.dumps(enhanced_data, indent=2, default=_json_default)
+
+
+def _json_default(obj: Any) -> Any:
+    """Serialize pydantic models (e.g. Issue) and other non-JSON types."""
+    if hasattr(obj, "model_dump"):
+        return obj.model_dump(exclude_none=True)
+    if hasattr(obj, "dict"):  # pydantic v1
+        return obj.dict(exclude_none=True)
+    if isinstance(obj, (set, frozenset)):
+        return sorted(obj)
+    return str(obj)

@@ -31,6 +31,29 @@ class DedicatedUpdates:
         self.projects_api = projects_api
         self.custom_fields = custom_fields
 
+    def _state_success_response(self, issue_id: str, new_state: str, api_method: str) -> str:
+        """Build the success payload; the update already landed, so a formatting
+        or fetch failure here must still report success (a retry would double-apply)."""
+        try:
+            issue_data = self.issues_api.get_issue(issue_id)
+            return format_json_response({
+                "status": "success",
+                "message": f"Successfully updated issue {issue_id} state to '{new_state}'",
+                "issue_id": issue_id,
+                "new_state": new_state,
+                "api_method": api_method,
+                "issue_data": issue_data,
+            })
+        except Exception as post_error:
+            logger.warning(f"State updated for {issue_id} but response building failed: {post_error}")
+            return json.dumps({
+                "status": "success",
+                "message": f"Issue {issue_id} state updated to '{new_state}' (issue data unavailable: {post_error})",
+                "issue_id": issue_id,
+                "new_state": new_state,
+                "api_method": api_method,
+            })
+
     @sync_wrapper
     def update_issue_state(self, issue_id: str, new_state: str) -> str:
         """
@@ -73,17 +96,9 @@ class DedicatedUpdates:
             success = self.issues_api._apply_direct_state_update(issue_id, new_state)
             
             if success:
-                # Get the updated issue to return current state
-                updated_issue = self.issues_api.get_issue(issue_id)
-                
-                return format_json_response({
-                    "status": "success",
-                    "message": f"Successfully updated issue {issue_id} state to '{new_state}'",
-                    "issue_id": issue_id,
-                    "new_state": new_state,
-                    "api_method": "Direct Field Update API",
-                    "issue_data": updated_issue
-                })
+                return self._state_success_response(
+                    issue_id, new_state, "Direct Field Update API"
+                )
             else:
                 # If direct method fails, try command-based approach as fallback
                 logger.info(f"Direct API failed, trying command-based approach for issue {issue_id}")
@@ -95,18 +110,10 @@ class DedicatedUpdates:
                     }
                     
                     self.issues_api.client.post("commands", data=command_data)
-                    
-                    # Get the updated issue
-                    updated_issue = self.issues_api.get_issue(issue_id)
-                    
-                    return format_json_response({
-                        "status": "success",
-                        "message": f"Successfully updated issue {issue_id} state to '{new_state}' using fallback method",
-                        "issue_id": issue_id,
-                        "new_state": new_state,
-                        "api_method": "Commands API (fallback)",
-                        "issue_data": updated_issue
-                    })
+
+                    return self._state_success_response(
+                        issue_id, new_state, "Commands API (fallback)"
+                    )
                     
                 except Exception as cmd_error:
                     # Enhanced error handling with specific workflow analysis

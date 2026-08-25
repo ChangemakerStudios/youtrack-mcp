@@ -511,6 +511,7 @@ jobs:
         npm test
 
     - name: Package validation
+      id: validate
       run: |
         echo "🔍 Validating package before publishing..."
         
@@ -540,15 +541,24 @@ jobs:
         
         echo "✅ Package validation passed"
 
+    # npm returns 404 on PUT when the token cannot publish (stale, 2FA, wrong
+    # user). GitHub Packages is a second registry and must still run.
     - name: Publish to npmjs.org
+      id: npmjs
       run: |
-        echo "🚀 Publishing to npmjs.org..."
-        echo "Package: youtrack-mcp-tonyzorin@${{ steps.get_version.outputs.VERSION }}"
-        npm publish --access public
+        VERSION="${{ steps.get_version.outputs.VERSION }}"
+        PKG="youtrack-mcp-tonyzorin"
+        echo "Package: ${PKG}@${VERSION}"
+        if npm view "${PKG}@${VERSION}" version >/dev/null 2>&1; then
+          echo "Already on npmjs.org — skipping"
+        else
+          npm publish --access public
+        fi
       env:
         NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
     - name: Set up Node.js for GitHub Packages
+      if: always() && steps.validate.conclusion == 'success'
       uses: actions/setup-node@v4
       with:
         node-version: '18'
@@ -556,6 +566,7 @@ jobs:
         scope: '@${{ github.repository_owner }}'
 
     - name: Prepare for GitHub Packages
+      if: always() && steps.validate.conclusion == 'success'
       run: |
         echo "📦 Preparing for GitHub Packages..."
         
@@ -567,10 +578,16 @@ jobs:
         grep '"name"' package.json
 
     - name: Publish to GitHub Packages
+      if: always() && steps.validate.conclusion == 'success'
       run: |
-        echo "🚀 Publishing to GitHub Packages..."
-        echo "Package: @${{ github.repository_owner }}/youtrack-mcp@${{ steps.get_version.outputs.VERSION }}"
-        npm publish
+        VERSION="${{ steps.get_version.outputs.VERSION }}"
+        PKG="@${{ github.repository_owner }}/youtrack-mcp"
+        echo "Package: ${PKG}@${VERSION}"
+        if npm view "${PKG}@${VERSION}" version --registry=https://npm.pkg.github.com >/dev/null 2>&1; then
+          echo "Already on GitHub Packages — skipping"
+        else
+          npm publish
+        fi
       env:
         NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

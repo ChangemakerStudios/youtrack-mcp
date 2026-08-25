@@ -14,7 +14,7 @@
   "homepage": "https://github.com/tonyzorin/youtrack-mcp",
   "repository": {
     "type": "git",
-    "url": "https://github.com/tonyzorin/youtrack-mcp.git"
+    "url": "git+https://github.com/tonyzorin/youtrack-mcp.git"
   },
   "bugs": {
     "url": "https://github.com/tonyzorin/youtrack-mcp/issues"

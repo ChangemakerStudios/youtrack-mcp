@@ -29,6 +29,9 @@ wheels/
 .installed.cfg
 *.egg
 
+# Editor leftovers
+*.py-e
+
 # Virtual environments
 venv/
 venv_test/

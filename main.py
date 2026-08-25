@@ -5,6 +5,7 @@ Uses FastMCP directly for stdio, SSE, and streamable HTTP transports.
 """
 import logging
 import os
+import stat
 import sys
 
 from mcp.server.fastmcp import FastMCP
@@ -50,6 +51,25 @@ def _normalize_transport(transport: str) -> str:
     return transport
 
 
+def _stdin_is_mcp_client() -> bool:
+    """True when stdin is a pipe/socket from an MCP host (docker -i, Claude, Cursor)."""
+    try:
+        mode = os.fstat(sys.stdin.fileno()).st_mode
+    except OSError:
+        return False
+    return stat.S_ISFIFO(mode) or stat.S_ISSOCK(mode)
+
+
+def _should_fallback_to_http() -> bool:
+    """True when stdio would just EOF (Compose, docker without -i), not a TTY or pipe."""
+    if _stdin_is_mcp_client():
+        return False
+    try:
+        return not sys.stdin.isatty()
+    except (OSError, ValueError):
+        return True
+
+
 def main():
     """Run the MCP server."""
     import argparse
@@ -77,6 +97,24 @@ def main():
     # Determine transport: CLI arg > env var > default stdio
     transport = _normalize_transport(args.transport or os.getenv("TRANSPORT", "stdio"))
     port = args.port or int(os.getenv("PORT", "8000"))
+
+    # Docker Compose (no stdin) looks like a crash: stdio starts, then EOF exits.
+    # Switch to streamable HTTP so a long-running service actually stays up.
+    # Explicit --transport stdio skips this (Dockerfile ENV TRANSPORT=stdio does not).
+    if (
+        transport == "stdio"
+        and args.transport != "stdio"
+        and _should_fallback_to_http()
+    ):
+        logger.warning(
+            "No MCP client on stdin (typical of docker compose without -i). "
+            "Switching to streamable-http on 0.0.0.0:%s. "
+            "Pass --transport stdio to keep stdio, or set TRANSPORT=streamable-http "
+            "and publish port %s.",
+            port,
+            port,
+        )
+        transport = "streamable-http"
 
     logger.info(f"Starting YouTrack MCP Server v{APP_VERSION} [{transport}]")
 

@@ -17,9 +17,9 @@ ENV YOUTRACK_VERIFY_SSL="true"
 ENV YOUTRACK_URL=""
 ENV YOUTRACK_API_TOKEN=""
 
-# Transport mode: stdio (default, for Claude/Cursor) or sse (for SSE server)
+# Transport: stdio (Cursor/Claude with docker run -i) or streamable-http (Compose)
 ENV TRANSPORT="stdio"
-# Port for SSE transport mode
 ENV PORT="8000"
+EXPOSE 8000
 
 ENTRYPOINT ["python", "main.py"]

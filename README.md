@@ -79,7 +79,26 @@ docker run --rm -i \
 
 Tag `latest` is the current stable release (**1.18.0**). Pin `tonyzorin/youtrack-mcp:1.18.0` if you want a frozen image. WIP and PR tags exist for testing; do not use them in production.
 
-Remote HTTP (Claude Code, Cursor HTTP MCP, n8n):
+### Docker Compose (HTTP)
+
+Compose does not attach a client to stdin, so stdio exits after startup. Use streamable HTTP and publish the port:
+
+```yaml
+services:
+  youtrack-mcp:
+    image: tonyzorin/youtrack-mcp:latest
+    ports:
+      - "8000:8000"
+    environment:
+      YOUTRACK_URL: https://your-instance.youtrack.cloud
+      YOUTRACK_API_TOKEN: perm-xxx.your-token
+      TRANSPORT: streamable-http
+      ENABLED_TOOLS: get_issue,search_issues,get_projects
+```
+
+Point Cursor / Claude Code at `http://localhost:8000/mcp`.
+
+Remote HTTP from a terminal:
 
 ```bash
 docker run --rm -p 8000:8000 \
@@ -146,10 +165,8 @@ Self-signed Server: `YOUTRACK_VERIFY_SSL=false`.
 
 ## Development
 
-- [Release process](automations/RELEASE_INSTRUCTIONS.md)
-- [Docker tagging](automations/DOCKER_TAGGING.md)
 - [Testing](tests/README.md)
-- [Automation scripts](automations/README.md)
+- CI: [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
 
 ## Support
 

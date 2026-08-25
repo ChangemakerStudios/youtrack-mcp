@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 YouTrack MCP Server - A Model Context Protocol server for JetBrains YouTrack.
-Uses FastMCP directly for clean stdio/SSE transport support.
+Uses FastMCP directly for stdio, SSE, and streamable HTTP transports.
 """
 import logging
 import os
@@ -20,6 +20,10 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stderr)],
 )
 logger = logging.getLogger(__name__)
+
+# FastMCP 1.x names the remote HTTP transport "streamable-http".
+# Accept "http" as an alias so the npm --http flag keeps working.
+_HTTP_TRANSPORTS = {"http", "streamable-http"}
 
 
 def create_server(host: str = "0.0.0.0", port: int = 8000) -> FastMCP:
@@ -40,15 +44,25 @@ def create_server(host: str = "0.0.0.0", port: int = 8000) -> FastMCP:
     return mcp
 
 
+def _normalize_transport(transport: str) -> str:
+    if transport in _HTTP_TRANSPORTS:
+        return "streamable-http"
+    return transport
+
+
 def main():
     """Run the MCP server."""
     import argparse
 
     parser = argparse.ArgumentParser(description="YouTrack MCP Server")
-    parser.add_argument("--transport", choices=["stdio", "sse"], default=None,
-                        help="Transport mode (default: from TRANSPORT env var, fallback stdio)")
-    parser.add_argument("--host", default="0.0.0.0", help="Host for SSE transport")
-    parser.add_argument("--port", type=int, default=None, help="Port for SSE transport")
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "sse", "streamable-http", "http"],
+        default=None,
+        help="Transport mode (default: from TRANSPORT env var, fallback stdio)",
+    )
+    parser.add_argument("--host", default="0.0.0.0", help="Host for SSE / streamable HTTP")
+    parser.add_argument("--port", type=int, default=None, help="Port for SSE / streamable HTTP")
     parser.add_argument("--version", action="store_true", help="Show version and exit")
     parser.add_argument("--log-level", default="INFO",
                         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"])
@@ -61,7 +75,7 @@ def main():
     logging.getLogger().setLevel(getattr(logging, args.log_level))
 
     # Determine transport: CLI arg > env var > default stdio
-    transport = args.transport or os.getenv("TRANSPORT", "stdio")
+    transport = _normalize_transport(args.transport or os.getenv("TRANSPORT", "stdio"))
     port = args.port or int(os.getenv("PORT", "8000"))
 
     logger.info(f"Starting YouTrack MCP Server v{APP_VERSION} [{transport}]")

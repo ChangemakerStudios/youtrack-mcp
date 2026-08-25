@@ -1,335 +1,159 @@
-[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/tonyzorin-youtrack-mcp-badge.png)](https://mseep.ai/app/tonyzorin-youtrack-mcp)
-
 # YouTrack MCP
 
-A Model Context Protocol (MCP) server that provides access to YouTrack functionality.
+[![CI](https://github.com/tonyzorin/youtrack-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/tonyzorin/youtrack-mcp/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/youtrack-mcp-tonyzorin)](https://www.npmjs.com/package/youtrack-mcp-tonyzorin)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## 🚀 Quick Reference - Common Operations
+Open-source [Model Context Protocol](https://modelcontextprotocol.io) server for [JetBrains YouTrack](https://www.jetbrains.com/youtrack/). You run it locally (Docker, npx, or Python). It talks to **YouTrack Cloud or Server** over the REST API so Cursor, Claude Desktop, and other MCP clients can search, create, and update issues.
 
-### **🎯 State Transitions (Most Common)**
-```python
-# ✅ PROVEN WORKING FORMAT - Use simple strings
-update_issue_state("DEMO-123", "In Progress")
-update_issue_state("PROJECT-456", "Fixed")
-update_issue_state("TASK-789", "Closed")
+This server shipped in **April 2025**, about six months before JetBrains added a Remote MCP to [YouTrack 2025.3](https://blog.jetbrains.com/youtrack/2025/10/youtrack-introduces-a-remote-mcp-server-and-new-apps-2/) (October 2025). It is not a fork of the official server.
 
-# ❌ DON'T USE - Complex objects fail
-# update_custom_fields(issue_id, {"State": {"name": "In Progress"}})  # FAILS
-# update_custom_fields(issue_id, {"State": {"id": "154-2"}})         # FAILS
+## Why this still exists
+
+JetBrains’ [official MCP](https://www.jetbrains.com/help/youtrack/cloud/model-context-protocol-server.html) is built **into YouTrack 2025.3+** (Cloud and Server) at `https://<your-instance>/mcp`. New MCP features from JetBrains (OAuth, time tracking, tags, drafts, custom YouTrack apps) live there. Use that if you are on 2025.3 or newer and want the vendor path.
+
+This project is a **process you run**. It calls the YouTrack REST API — the same API that existed before `/mcp`. That is why it still works on **self-hosted Server that has not upgraded to 2025.3**. There is no published minimum YouTrack version; if your instance can issue a permanent token and serve `/api/issues`, this server can talk to it. Article tools need a YouTrack that has the knowledge base.
+
+| | This MCP | Official (2025.3+) |
+| --- | --- | --- |
+| History | April 2025, before official existed | Shipped in YouTrack 2025.3 (Oct 2025) |
+| Where it runs | Your machine (stdio / Docker) | Inside YouTrack (`/mcp`) |
+| YouTrack versions | REST API (including Server before 2025.3) | 2025.3 and newer |
+| Cursor / Claude Desktop | Native stdio | Remote HTTP, or `npx mcp-remote` |
+| Field updates | Simple strings: `update_issue_state("DEMO-123", "In Progress")` | Fetch field schema, then `update_issue` |
+| Stick with this for | Older Server, local stdio, attachments, project admin, tool allow/deny lists | New JetBrains MCP features, OAuth, n8n/Zapier `/mcp` URL |
+
+## Quick start
+
+You need a YouTrack URL and a [permanent API token](https://www.jetbrains.com/help/youtrack/cloud/manage-permanent-tokens.html).
+
+### Cursor / Claude Desktop (Docker)
+
+```json
+{
+  "mcpServers": {
+    "youtrack": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "-e", "YOUTRACK_URL=https://your-instance.youtrack.cloud",
+        "-e", "YOUTRACK_API_TOKEN=perm-xxx.your-token",
+        "tonyzorin/youtrack-mcp:latest"
+      ]
+    }
+  }
+}
 ```
 
-### **🚨 Priority Updates (Very Common)**
-```python
-# ✅ PROVEN WORKING FORMAT - Use simple strings
-update_issue_priority("DEMO-123", "Critical")
-update_issue_priority("PROJECT-456", "Major") 
-update_issue_priority("TASK-789", "Normal")
+Same image on GHCR: `ghcr.io/tonyzorin/youtrack-mcp:latest`.
 
-# ❌ DON'T USE - Complex objects fail
-# update_custom_fields(issue_id, {"Priority": {"name": "Critical"}})  # FAILS
-# update_custom_fields(issue_id, {"Priority": {"id": "152-1"}})       # FAILS
+`-i` is required for stdio (without it the container exits immediately). Docker does **not** see Cursor/Claude `env` — pass YouTrack vars with `-e` in `args`. To limit tools, add another `-e` line, for example `ENABLED_TOOLS=get_issue,search_issues,create_issue,add_comment`.
+
+### npx (no Docker)
+
+```json
+{
+  "mcpServers": {
+    "youtrack": {
+      "command": "npx",
+      "args": ["-y", "youtrack-mcp-tonyzorin"],
+      "env": {
+        "YOUTRACK_URL": "https://your-instance.youtrack.cloud",
+        "YOUTRACK_API_TOKEN": "perm-xxx.your-token"
+      }
+    }
+  }
+}
 ```
 
-### **👤 Assignment Updates (Common)**
-```python
-# ✅ PROVEN WORKING FORMAT - Use login names
-update_issue_assignee("DEMO-123", "admin")
-update_issue_assignee("PROJECT-456", "john.doe")
-update_issue_assignee("TASK-789", "jane.smith")
+Requires Node.js 18+ and Python 3.14+. Also published as `@tonyzorin/youtrack-mcp` on GitHub Packages.
 
-# ❌ DON'T USE - Complex objects fail
-# update_custom_fields(issue_id, {"Assignee": {"login": "admin"}})    # FAILS
-```
+### Docker from a terminal
 
-### **🏷️ Type Updates (Common)**
-```python
-# ✅ PROVEN WORKING FORMAT - Use simple strings
-update_issue_type("DEMO-123", "Bug")
-update_issue_type("PROJECT-456", "Feature")
-update_issue_type("TASK-789", "Task")
-
-# ❌ DON'T USE - Complex objects fail
-# update_custom_fields(issue_id, {"Type": {"name": "Bug"}})          # FAILS
-```
-
-### **⏱️ Time Estimation (Common)**
-```python
-# ✅ PROVEN WORKING FORMAT - Use simple time strings
-update_issue_estimation("DEMO-123", "4h")     # 4 hours
-update_issue_estimation("PROJECT-456", "2d")  # 2 days
-update_issue_estimation("TASK-789", "30m")    # 30 minutes
-update_issue_estimation("TASK-790", "1w")     # 1 week
-update_issue_estimation("TASK-791", "3d 5h")  # 3 days 5 hours
-
-# ❌ DON'T USE - ISO duration or complex formats fail
-# update_custom_fields(issue_id, {"Estimation": "PT4H"})             # FAILS
-```
-
-### **⚡ Complete Issue Workflows**
-```python
-# 🎯 Complete Triage Workflow
-update_issue_type("DEMO-123", "Bug")           # Classify as bug
-update_issue_priority("DEMO-123", "Critical")  # Set priority  
-update_issue_assignee("DEMO-123", "admin")     # Assign to admin
-update_issue_estimation("DEMO-123", "4h")      # Estimate 4 hours
-update_issue_state("DEMO-123", "In Progress")  # Start work
-add_comment("DEMO-123", "Critical bug triaged and assigned")
-
-# 🚀 Feature Development Workflow  
-update_issue_type("PROJ-456", "Feature")       # Classify as feature
-update_issue_priority("PROJ-456", "Normal")    # Standard priority
-update_issue_assignee("PROJ-456", "jane.doe")  # Assign to developer
-update_issue_estimation("PROJ-456", "2d")      # Estimate 2 days
-add_comment("PROJ-456", "Feature ready for development")
-
-# ✅ Task Completion Workflow
-update_issue_state("TASK-789", "Fixed")        # Mark as fixed
-add_comment("TASK-789", "Implementation completed and tested")
-
-# 📊 Quick Updates (Most Common)
-update_issue_state("DEMO-123", "In Progress")       # Start work
-update_issue_priority("DEMO-123", "Critical")       # Escalate
-update_issue_assignee("DEMO-123", "admin")          # Reassign
-update_issue_type("DEMO-123", "Bug")                # Reclassify
-update_issue_estimation("DEMO-123", "6h")           # Re-estimate
-```
-
-### **📝 Other Custom Fields**
-```python
-# ✅ Working formats for different field types:
-
-# Priority (enum field)
-update_custom_fields("DEMO-123", {"Priority": "Critical"})
-
-# Assignee (user field) 
-update_custom_fields("DEMO-123", {"Assignee": "admin"})
-
-# Estimation (period field)
-update_custom_fields("DEMO-123", {"Estimation": "4h"})
-
-# Type (enum field)
-update_custom_fields("DEMO-123", {"Type": "Bug"})
-
-# Multiple fields at once
-update_custom_fields("DEMO-123", {
-    "Priority": "Critical",
-    "Assignee": "admin", 
-    "Type": "Bug"
-})
-```
-
-### **🔍 Finding Issues**
-```python
-# Search by text
-search_issues("bug in login")
-
-# Search by project
-get_project_issues("DEMO")
-
-# Get specific issue
-get_issue("DEMO-123")
-```
-
-### **📋 Creating Issues**
-```python
-create_issue(
-    project_id="DEMO",
-    summary="Bug in login system",
-    description="Users cannot log in with special characters"
-)
-```
-
-### **🔗 Linking Issues**
-```python
-# Create dependency
-add_dependency("DEMO-123", "DEMO-124")
-
-# Create relates link
-add_relates_link("DEMO-123", "DEMO-125")
-```
-
-### **💬 Comments**
-```python
-add_comment("DEMO-123", "Fixed the login bug")
-get_issue_comments("DEMO-123")
-```
-
-### **📎 Attachments**
-```python
-# Get raw issue data with attachments
-get_issue_raw("DEMO-123")
-
-# Download attachment content as base64
-get_attachment_content("DEMO-123", "1-456")
-
-# Delete an attachment (requires permissions)
-delete_attachment("DEMO-123", "1-456")
-```
-
----
-
-## Installation
-
-[![Docker Build and Push](https://github.com/tonyzorin/youtrack-mcp/actions/workflows/docker-build.yml/badge.svg)](https://github.com/tonyzorin/youtrack-mcp/actions/workflows/docker-build.yml)
-
-This project provides a Model Context Protocol (MCP) server for YouTrack, enabling seamless integration with Claude Desktop and other MCP clients.
-
-## Quick Start
-
-### Using Docker (Recommended)
-
-Choose from multiple registries:
-
-#### Docker Hub (Primary)
 ```bash
-# Use the latest stable release
-docker run --rm \
+docker run --rm -i \
   -e YOUTRACK_URL="https://your-instance.youtrack.cloud" \
-  -e YOUTRACK_API_TOKEN="your-token" \
+  -e YOUTRACK_API_TOKEN="perm-xxx.your-token" \
   tonyzorin/youtrack-mcp:latest
-
-# Or use the latest development build
-docker run --rm \
-  -e YOUTRACK_URL="https://your-instance.youtrack.cloud" \
-  -e YOUTRACK_API_TOKEN="your-token" \
-  tonyzorin/youtrack-mcp:1.1.2_wip
 ```
 
-#### GitHub Container Registry (New)
+Tag `latest` is the current stable release (**1.18.0**). Pin `tonyzorin/youtrack-mcp:1.18.0` if you want a frozen image. WIP and PR tags exist for testing; do not use them in production.
+
+Remote HTTP (Claude Code, Cursor HTTP MCP, n8n):
+
 ```bash
-# Use the latest stable release
-docker run --rm \
+docker run --rm -p 8000:8000 \
   -e YOUTRACK_URL="https://your-instance.youtrack.cloud" \
-  -e YOUTRACK_API_TOKEN="your-token" \
-  ghcr.io/tonyzorin/youtrack-mcp:latest
-
-# Or use the latest development build
-docker run --rm \
-  -e YOUTRACK_URL="https://your-instance.youtrack.cloud" \
-  -e YOUTRACK_API_TOKEN="your-token" \
-  ghcr.io/tonyzorin/youtrack-mcp:1.1.2_wip
+  -e YOUTRACK_API_TOKEN="perm-xxx.your-token" \
+  tonyzorin/youtrack-mcp:latest \
+  --transport streamable-http --host 0.0.0.0 --port 8000
 ```
 
-### Available Docker Tags
+## What you can do
 
-Both registries provide identical tags:
+Pass **simple strings** for state, priority, assignee, type, and estimation. Nested `{ "name": "In Progress" }` objects fail.
 
-- `latest` - Latest stable release (currently 1.1.2)
-- `1.1.2` - Specific version tags  
-- `1.1.2_wip` - Work-in-progress builds from main branch
-- `pr-<number>` - Pull request builds for testing
+```python
+search_issues("project: DEMO #Unresolved")
+get_issue("DEMO-123")
+create_issue(project="DEMO", summary="Login fails on special characters", custom_fields={"Assignee": "admin", "Type": "Bug"})
 
-*Note: Images are now published to both Docker Hub and GitHub Container Registry simultaneously.*
+update_issue_state("DEMO-123", "In Progress")
+update_issue_priority("DEMO-123", "Critical")
+update_issue_assignee("DEMO-123", "admin")
+update_issue_type("DEMO-123", "Bug")
+update_issue_estimation("DEMO-123", "4h")
 
-### Using npm Package
-
-Choose from multiple registries:
-
-#### npmjs.org (Primary)
-```bash
-# Install globally
-npm install -g youtrack-mcp-tonyzorin
-
-# Or use with npx (no installation required)
-npx youtrack-mcp-tonyzorin
+add_comment("DEMO-123", "Reproduced on staging")
+add_dependency("DEMO-123", "DEMO-124")
 ```
 
-#### GitHub Packages (New)
-```bash
-# Configure GitHub registry
-npm config set @tonyzorin:registry https://npm.pkg.github.com
+**Issues:** search, get, create, update, comments, links (relates / depends / duplicates).
 
-# Install globally
-npm install -g @tonyzorin/youtrack-mcp
+**Custom fields:** dedicated helpers above, plus `update_custom_fields`, batch updates, schema and allowed-value lookup.
 
-# Or use with npx
-npx @tonyzorin/youtrack-mcp
-```
+**Attachments:** list via `get_issue_raw`, download as base64 (`get_attachment_content`), delete.
 
-## Features
+**Projects:** list/get, create/update, custom-field schemas, subsystems, versions, builds.
 
-- **Issue Management**: Create, read, update, and delete YouTrack issues
-- **Project Management**: Access project information and custom fields
-- **Search Capabilities**: Advanced search with filters and custom fields
-- **User Management**: Retrieve user information and permissions
-- **Attachment Support**: Download, process, and delete issue attachments (up to 10MB)
-- **Multi-Platform Support**: ARM64/Apple Silicon and AMD64 architecture support
-- **Comprehensive API**: Full YouTrack REST API integration
+**Users:** current user, lookup, permissions.
 
-## Development
+**Articles:** get, search, create, update, comments.
 
-This project maintains high code quality with comprehensive testing:
-
-- **Test Coverage**: 41% (continuously improving)
-- **CI/CD Pipeline**: Automated testing and Docker builds
-- **Quality Assurance**: Automated testing on every commit
-
-For development instructions, see the [Automation Scripts Guide](automations/README.md) and [Release Process](automations/RELEASE_INSTRUCTIONS.md).
+**Diagnostics:** `diagnose_workflow_restrictions`, `get_help`.
 
 ## Configuration
 
-### Environment Variables
+| Variable | Required | Description |
+| --- | --- | --- |
+| `YOUTRACK_URL` | yes | YouTrack base URL (Cloud or Server) |
+| `YOUTRACK_API_TOKEN` | yes | Permanent token |
+| `YOUTRACK_VERIFY_SSL` | no | SSL verification, default `true` |
+| `DISABLED_TOOLS` | no | Comma-separated tools to hide (denylist) |
+| `ENABLED_TOOLS` | no | Comma-separated tools to keep; hides all others (allowlist) |
 
-- `YOUTRACK_URL`: Your YouTrack instance URL
-- `YOUTRACK_API_TOKEN`: Your YouTrack API token
-- `YOUTRACK_VERIFY_SSL`: SSL verification (default: true)
-- `DISABLED_TOOLS`: Comma-separated list of tools to disable (denylist mode)
-- `ENABLED_TOOLS`: Comma-separated list of tools to enable (allowlist mode)
+Allowlist wins if both are set. Names are case-insensitive; hyphens and underscores are equivalent.
 
-### Tool Filtering
-
-You can reduce context pollution and token usage by filtering which tools are available:
-
-**Denylist Mode** - Disable specific tools:
 ```bash
-export DISABLED_TOOLS="create_issue,update_issue,delete_page"
-```
+# Hide write tools
+export DISABLED_TOOLS="create_issue,update_issue,delete_attachment"
 
-**Allowlist Mode** - Enable only specific tools (disables all others):
-```bash
+# Read-only subset
 export ENABLED_TOOLS="get_issue,search_issues,get_projects"
 ```
 
-**Notes:**
-- Tool names are case-insensitive (`Get_Issue` = `get_issue`)
-- Hyphens and underscores are equivalent (`get-issue` = `get_issue`)
-- If `ENABLED_TOOLS` is set, it takes precedence over `DISABLED_TOOLS`
-- Invalid tool names generate warnings but don't cause errors
-- Filtering happens at startup for maximum efficiency
+Self-signed Server: `YOUTRACK_VERIFY_SSL=false`.
 
-### Example Configuration
+## Development
 
-```bash
-export YOUTRACK_URL="https://prodcamp.youtrack.cloud/"
-export YOUTRACK_API_TOKEN="perm-YWRtaW4=.NDMtMg==.JgbpvnDbEu7RSWwAJT6Ab3iXgQyPwu"
-export YOUTRACK_VERIFY_SSL="true"
-```
-
-## Documentation
-
-- [Development Workflow & Release Process](automations/RELEASE_INSTRUCTIONS.md)
-- [Docker Tagging Strategy](automations/DOCKER_TAGGING.md)
-- [Testing Guide](tests/README.md)
-- [Automation Scripts](automations/README.md)
+- [Release process](automations/RELEASE_INSTRUCTIONS.md)
+- [Docker tagging](automations/DOCKER_TAGGING.md)
+- [Testing](tests/README.md)
+- [Automation scripts](automations/README.md)
 
 ## Support
 
-For issues and questions:
-1. Check the [Issues](https://github.com/tonyzorin/youtrack-mcp/issues) page
-2. Review the documentation
-3. Submit a new issue with detailed information
-4. Contact directly: [t.me/tonyzorin](https://t.me/tonyzorin)
+- [GitHub Issues](https://github.com/tonyzorin/youtrack-mcp/issues)
+- Telegram: [t.me/tonyzorin](https://t.me/tonyzorin)
 
----
-
-*Latest update: Comprehensive custom fields management with 567 test coverage and clean project organization.*
-
-## Version 1.11.1 Released
-
-🎉 **MAJOR FEATURE** - Custom Fields Management Support
-- ✅ Complete custom fields CRUD operations (create, read, update, delete)
-- ✅ Field validation against project schema (all field types supported)
-- ✅ Batch update capabilities for performance
-- ✅ Comprehensive error handling with detailed messages
-- ✅ 567 tests (+68 new tests) with extensive coverage
-- ✅ Clean project organization with `automations/` directory
+MIT. See [LICENSE](LICENSE).

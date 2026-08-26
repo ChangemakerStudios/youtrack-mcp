@@ -70,9 +70,12 @@ if (existsSync(youtrackMcpSource)) {
     const entries = readdirSync(src);
     
     for (const entry of entries) {
+      if (entry === '__pycache__' || entry.endsWith('.pyc') || entry.endsWith('.py-e')) {
+        continue;
+      }
       const srcPath = join(src, entry);
       const destPath = join(dest, entry);
-      
+
       if (statSync(srcPath).isDirectory()) {
         await copyDir(srcPath, destPath);
       } else {

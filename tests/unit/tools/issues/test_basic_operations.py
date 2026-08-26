@@ -218,6 +218,54 @@ class TestBasicOperations:
         self.mock_projects_api.get_project_by_name.assert_called_once_with(project)
         self.mock_issues_api.create_issue.assert_called_once_with("0-1", summary, description)
 
+    def test_create_issue_with_custom_fields(self):
+        """Test create_issue passes custom fields through to the API client."""
+        mock_project = Mock()
+        mock_project.id = "0-1"
+        mock_project.name = "Demo Project"
+        self.mock_projects_api.get_project_by_name.return_value = mock_project
+
+        mock_created_issue = {"id": "3-123", "summary": "Need assignee"}
+        self.mock_issues_api.create_issue.return_value = mock_created_issue
+        self.mock_issues_api._create_enhanced_field_object.side_effect = (
+            lambda project_id, name, value: {
+                "$type": "SingleUserIssueCustomField" if name == "Assignee" else "SingleEnumIssueCustomField",
+                "name": name,
+                "value": value,
+            }
+        )
+
+        result = self.basic_ops.create_issue(
+            "DEMO",
+            "Need assignee",
+            None,
+            {"Assignee": "admin", "Type": "Bug"},
+        )
+        result_data = json.loads(result)
+
+        assert result_data["id"] == "3-123"
+        additional = self.mock_issues_api.create_issue.call_args[0][3]
+        assert "customFields" in additional
+        names = {f["name"] for f in additional["customFields"]}
+        assert names == {"Assignee", "Type"}
+
+    def test_create_issue_custom_fields_json_string(self):
+        """Test create_issue accepts custom_fields as a JSON string."""
+        self.mock_issues_api.create_issue.return_value = {"id": "3-1", "summary": "x"}
+        self.mock_issues_api._create_enhanced_field_object.return_value = {
+            "$type": "SingleUserIssueCustomField",
+            "name": "Assignee",
+            "value": "admin",
+        }
+
+        result = self.basic_ops.create_issue(
+            "0-1", "Need assignee", None, '{"Assignee": "admin"}'
+        )
+        result_data = json.loads(result)
+        assert result_data["id"] == "3-1"
+        additional = self.mock_issues_api.create_issue.call_args[0][3]
+        assert additional["customFields"][0]["name"] == "Assignee"
+
     def test_create_issue_success_with_project_id(self):
         """Test successful issue creation with project ID."""
         # Arrange
@@ -488,6 +536,7 @@ class TestBasicOperations:
         assert "project" in create_def["parameter_descriptions"]
         assert "summary" in create_def["parameter_descriptions"]
         assert "description" in create_def["parameter_descriptions"]
+        assert "custom_fields" in create_def["parameter_descriptions"]
         
         update_def = definitions["update_issue"]
         assert "issue_id" in update_def["parameter_descriptions"]

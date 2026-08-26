@@ -107,11 +107,12 @@ class Utilities:
                 },
             },
             "create_issue": {
-                "description": 'Create a new issue in a YouTrack project with title and optional description. Example: create_issue(project="DEMO", summary="Bug in login", description="Users cannot log in")',
+                "description": 'Create a new issue in a YouTrack project with title, optional description, and optional custom_fields (Assignee, Type, State, Priority). Example: create_issue(project="DEMO", summary="Bug in login", custom_fields={"Assignee":"admin"})',
                 "parameter_descriptions": {
                     "project": "Project identifier like 'DEMO' or 'PROJECT'",
                     "summary": "Title/summary for the new issue",
                     "description": "Optional detailed description of the issue",
+                    "custom_fields": "Optional dictionary of custom fields such as Assignee, Type, State, Priority",
                 },
             },
             "update_issue": {

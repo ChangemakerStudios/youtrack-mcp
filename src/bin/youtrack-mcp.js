@@ -28,7 +28,7 @@ Options:
   --version, -v        Show version information
   --info               Show server information
   --stdio              Use stdio transport (default)
-  --http               Use HTTP transport with --host and --port
+  --http               Use streamable HTTP on --host/--port
   --host <host>        Host to bind HTTP server (default: 0.0.0.0)
   --port <port>        Port for HTTP server (default: 8000)
 
@@ -73,7 +73,7 @@ function showVersion() {
     const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
     console.log(`YouTrack MCP Server v${packageJson.version}`);
   } catch (error) {
-    console.log('YouTrack MCP Server v1.11.1');
+    console.log('YouTrack MCP Server v1.18.4');
   }
 }
 
@@ -136,8 +136,8 @@ async function main() {
 
     // Configure transport
     if (useHttp) {
-      serverArgs.push('--transport', 'http', '--host', host);
-      console.log(`🌐 Starting HTTP server on http://${host}:${port}`);
+      serverArgs.push('--transport', 'streamable-http', '--host', host, '--port', port);
+      console.log(`🌐 Starting streamable HTTP server on http://${host}:${port}`);
     } else {
       serverArgs.push('--transport', 'stdio');
       console.log('📡 Starting stdio transport (for Claude Desktop)');

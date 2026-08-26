@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
 YouTrack MCP Server - A Model Context Protocol server for JetBrains YouTrack.
-Uses FastMCP directly for clean stdio/SSE transport support.
+Uses FastMCP directly for stdio, SSE, and streamable HTTP transports.
 """
 import functools
 import inspect
 import json
 import logging
 import os
+import stat
 import sys
 
 from mcp.server.fastmcp import FastMCP
@@ -23,6 +24,10 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stderr)],
 )
 logger = logging.getLogger(__name__)
+
+# FastMCP 1.x names the remote HTTP transport "streamable-http".
+# Accept "http" as an alias so the npm --http flag keeps working.
+_HTTP_TRANSPORTS = {"http", "streamable-http"}
 
 
 def _flatten_result(result):
@@ -86,15 +91,44 @@ def create_server(host: str = "0.0.0.0", port: int = 8000) -> FastMCP:
     return mcp
 
 
+def _normalize_transport(transport: str) -> str:
+    if transport in _HTTP_TRANSPORTS:
+        return "streamable-http"
+    return transport
+
+
+def _stdin_is_mcp_client() -> bool:
+    """True when stdin is a pipe/socket from an MCP host (docker -i, Claude, Cursor)."""
+    try:
+        mode = os.fstat(sys.stdin.fileno()).st_mode
+    except OSError:
+        return False
+    return stat.S_ISFIFO(mode) or stat.S_ISSOCK(mode)
+
+
+def _should_fallback_to_http() -> bool:
+    """True when stdio would just EOF (Compose, docker without -i), not a TTY or pipe."""
+    if _stdin_is_mcp_client():
+        return False
+    try:
+        return not sys.stdin.isatty()
+    except (OSError, ValueError):
+        return True
+
+
 def main():
     """Run the MCP server."""
     import argparse
 
     parser = argparse.ArgumentParser(description="YouTrack MCP Server")
-    parser.add_argument("--transport", choices=["stdio", "sse"], default=None,
-                        help="Transport mode (default: from TRANSPORT env var, fallback stdio)")
-    parser.add_argument("--host", default="0.0.0.0", help="Host for SSE transport")
-    parser.add_argument("--port", type=int, default=None, help="Port for SSE transport")
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "sse", "streamable-http", "http"],
+        default=None,
+        help="Transport mode (default: from TRANSPORT env var, fallback stdio)",
+    )
+    parser.add_argument("--host", default="0.0.0.0", help="Host for SSE / streamable HTTP")
+    parser.add_argument("--port", type=int, default=None, help="Port for SSE / streamable HTTP")
     parser.add_argument("--version", action="store_true", help="Show version and exit")
     parser.add_argument("--log-level", default="INFO",
                         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"])
@@ -107,8 +141,26 @@ def main():
     logging.getLogger().setLevel(getattr(logging, args.log_level))
 
     # Determine transport: CLI arg > env var > default stdio
-    transport = args.transport or os.getenv("TRANSPORT", "stdio")
+    transport = _normalize_transport(args.transport or os.getenv("TRANSPORT", "stdio"))
     port = args.port or int(os.getenv("PORT", "8000"))
+
+    # Docker Compose (no stdin) looks like a crash: stdio starts, then EOF exits.
+    # Switch to streamable HTTP so a long-running service actually stays up.
+    # Explicit --transport stdio skips this (Dockerfile ENV TRANSPORT=stdio does not).
+    if (
+        transport == "stdio"
+        and args.transport != "stdio"
+        and _should_fallback_to_http()
+    ):
+        logger.warning(
+            "No MCP client on stdin (typical of docker compose without -i). "
+            "Switching to streamable-http on 0.0.0.0:%s. "
+            "Pass --transport stdio to keep stdio, or set TRANSPORT=streamable-http "
+            "and publish port %s.",
+            port,
+            port,
+        )
+        transport = "streamable-http"
 
     logger.info(f"Starting YouTrack MCP Server v{APP_VERSION} [{transport}]")
 

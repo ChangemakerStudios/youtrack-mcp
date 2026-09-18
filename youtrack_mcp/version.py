@@ -2,4 +2,4 @@
 YouTrack MCP Server version information.
 """
 
-__version__ = "1.18.4"
+__version__ = "2.0.0"

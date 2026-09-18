@@ -153,6 +153,15 @@ def load_all_tools() -> Dict[str, Callable]:
     """
     tools = {}
 
+    # Re-read filter env vars at load time so Docker `-e ENABLED_TOOLS=...`
+    # always applies even if Config was imported earlier.
+    enabled_env = os.getenv("ENABLED_TOOLS")
+    if enabled_env is not None:
+        Config.ENABLED_TOOLS = enabled_env
+    disabled_env = os.getenv("DISABLED_TOOLS")
+    if disabled_env is not None:
+        Config.DISABLED_TOOLS = disabled_env
+
     # Import tool modules
     from youtrack_mcp.tools.issues import IssueTools
     from youtrack_mcp.tools.projects import ProjectTools

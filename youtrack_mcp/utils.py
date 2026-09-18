@@ -93,11 +93,26 @@ def format_json_response(data: Any) -> str:
 
 
 def _json_default(obj: Any) -> Any:
-    """Serialize pydantic models (e.g. Issue) and other non-JSON types."""
-    if hasattr(obj, "model_dump"):
-        return obj.model_dump(exclude_none=True)
-    if hasattr(obj, "dict"):  # pydantic v1
-        return obj.dict(exclude_none=True)
+    """Serialize pydantic models (e.g. Issue) and other non-JSON types.
+
+    Must always return something json can encode. Returning another opaque
+    object makes json.dumps call this again on the result, and objects that
+    answer every getattr (Mock, some proxies) turn that into an unbounded
+    loop rather than a RecursionError, so fall back to str() unless the dump
+    produced a plain JSON type.
+    """
     if isinstance(obj, (set, frozenset)):
         return sorted(obj)
+
+    for attr in ("model_dump", "dict"):  # pydantic v2, then v1
+        dump = getattr(obj, attr, None)
+        if not callable(dump):
+            continue
+        try:
+            dumped = dump(exclude_none=True)
+        except Exception:  # not a real pydantic model
+            continue
+        if isinstance(dumped, (dict, list, str, int, float, bool)) or dumped is None:
+            return dumped
+
     return str(obj)

@@ -129,9 +129,17 @@ class IssueTools:
         """Search for issues using YouTrack query syntax."""
         return self.basic_operations.search_issues(query, limit)
     
-    def create_issue(self, project: str, summary: str, description: Optional[str] = None) -> str:
+    def create_issue(
+        self,
+        project: str,
+        summary: str,
+        description: Optional[str] = None,
+        custom_fields: Optional[Any] = None,
+    ) -> str:
         """Create a new issue in the specified project."""
-        return self.basic_operations.create_issue(project, summary, description)
+        return self.basic_operations.create_issue(
+            project, summary, description, custom_fields
+        )
     
     def update_issue(self, issue_id: str, summary: Optional[str] = None, description: Optional[str] = None, uses_markdown: Optional[bool] = None, additional_fields: Optional[Dict[str, Any]] = None) -> str:
         """Update basic issue fields."""

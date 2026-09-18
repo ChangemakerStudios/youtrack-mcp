@@ -617,10 +617,12 @@ class IssuesClient:
                         # Known version/sprint field names — skip the schema lookup
                         field_data = self._create_version_field_object(project_id, field_name, field_value, multi=True)
                     else:
-                        # Query the schema to detect version/sprint fields
+                        # Query the schema to detect other version/sprint fields
                         value_type = self._get_field_value_type(project_id, field_name)
                         if value_type == "version":
-                            field_data = self._create_version_field_object(project_id, field_name, field_value)
+                            field_data = self._create_version_field_object(
+                                project_id, field_name, field_value, multi=True
+                            )
                         else:
                             # Default to enum for unknown fields
                             field_data = self._create_enum_field_object(project_id, field_name, field_value)
@@ -1808,10 +1810,12 @@ class IssuesClient:
                         # Known version/sprint field names — skip the schema lookup
                         field_data = self._create_version_field_object(project_id, field_name, field_value, multi=True)
                     else:
-                        # Query the schema to detect version/sprint fields
+                        # Query the schema to detect other version/sprint fields
                         value_type = self._get_field_value_type(project_id, field_name)
                         if value_type == "version":
-                            field_data = self._create_version_field_object(project_id, field_name, field_value)
+                            field_data = self._create_version_field_object(
+                                project_id, field_name, field_value, multi=True
+                            )
                         else:
                             # Default to enum for unknown fields
                             field_data = self._create_enum_field_object(project_id, field_name, field_value)
@@ -1943,7 +1947,9 @@ class IssuesClient:
                 # Query the schema to determine the actual field type
                 value_type = self._get_field_value_type(project_id, field_name)
                 if value_type == "version":
-                    return self._create_version_field_object(project_id, field_name, field_value)
+                    return self._create_version_field_object(
+                        project_id, field_name, field_value, multi=True
+                    )
                 else:
                     # Default to enum for unknown fields
                     return self._create_enum_field_object(project_id, field_name, field_value)
@@ -2177,13 +2183,11 @@ class IssuesClient:
         multi=False produces a SingleVersionIssueCustomField (single object value).
         """
         try:
-            # Accept either a string (single value) or list of values
             if isinstance(field_value, list):
                 value_names = [self._normalize_field_value(v) for v in field_value]
             else:
                 value_names = [self._normalize_field_value(field_value)]
 
-            # Try to get version IDs from the project
             from youtrack_mcp.api.projects import ProjectsClient
             projects_client = ProjectsClient(self.client)
             allowed_values = projects_client.get_custom_field_allowed_values(project_id, field_name)

@@ -93,21 +93,51 @@ class BasicOperations:
             logger.exception(f"Error searching issues with query: {query}")
             return format_json_response({"error": str(e)})
 
+    def _parse_custom_fields(self, custom_fields: Any) -> Optional[Dict[str, Any]]:
+        """Normalize custom_fields from a dict or JSON string."""
+        if custom_fields is None or custom_fields == "":
+            return None
+        if isinstance(custom_fields, str):
+            try:
+                custom_fields = json.loads(custom_fields)
+            except json.JSONDecodeError as e:
+                raise ValueError(f"custom_fields must be a JSON object: {e}") from e
+        if not isinstance(custom_fields, dict):
+            raise ValueError("custom_fields must be a JSON object / dictionary")
+        return custom_fields
+
+    def _custom_fields_payload(
+        self, project_id: str, custom_fields: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Build YouTrack customFields array using existing field-type helpers."""
+        field_objects = []
+        for field_name, field_value in custom_fields.items():
+            field_objects.append(
+                self.issues_api._create_enhanced_field_object(
+                    project_id, field_name, field_value
+                )
+            )
+        return {"customFields": field_objects}
+
     @sync_wrapper
     def create_issue(
-        self, project: str, summary: str, description: Optional[str] = None,
-        custom_fields: Optional[Dict[str, Any]] = None
+        self,
+        project: str,
+        summary: str,
+        description: Optional[str] = None,
+        custom_fields: Optional[Any] = None,
     ) -> str:
         """
         Create a new issue in YouTrack.
 
-        FORMAT: create_issue(project="DEMO", summary="Bug in login", description="Users cannot log in", custom_fields={"Assignee": "admin", "Priority": "Critical"})
+        FORMAT: create_issue(project="DEMO", summary="Bug in login", description="Users cannot log in", custom_fields={"Assignee": "admin", "Type": "Bug"})
 
         Args:
             project: The project identifier (e.g., "DEMO", "PROJECT")
             summary: The issue title/summary
             description: Optional detailed description of the issue
-            custom_fields: Optional dictionary of custom field names and values to set on creation (e.g., {"Assignee": "john.doe", "Priority": "Critical"})
+            custom_fields: Optional dict or JSON object of custom fields
+                (e.g. Assignee, Type, State, Priority, Sprints)
 
         Returns:
             JSON string with the created issue information
@@ -158,24 +188,31 @@ class BasicOperations:
 
             logger.info(f"Creating issue in project {project_id}: {summary}")
 
+            additional_fields = None
+            try:
+                parsed_fields = self._parse_custom_fields(custom_fields)
+            except ValueError as e:
+                return format_json_response({"error": str(e), "status": "error"})
+            if parsed_fields:
+                additional_fields = self._custom_fields_payload(
+                    project_id, parsed_fields
+                )
+
             # Call the API client to create the issue
             try:
-                issue = self.issues_api.create_issue(
-                    project_id, summary, description
-                )
+                if additional_fields:
+                    issue = self.issues_api.create_issue(
+                        project_id, summary, description, additional_fields
+                    )
+                else:
+                    issue = self.issues_api.create_issue(
+                        project_id, summary, description
+                    )
 
                 # Check if we got an issue with an ID
                 if isinstance(issue, dict) and issue.get("error"):
                     # Handle error returned as a dict
                     return format_json_response(issue)
-
-                # Apply custom fields if provided
-                if custom_fields and hasattr(issue, "id") and issue.id:
-                    try:
-                        logger.info(f"Setting custom fields on new issue {issue.id}: {custom_fields}")
-                        self.issues_api.update_issue_custom_fields(issue.id, custom_fields, validate=False)
-                    except Exception as cf_err:
-                        logger.warning(f"Issue created but failed to set custom fields: {cf_err}")
 
                 # Try to get full issue details right after creation
                 if hasattr(issue, "id"):
@@ -230,7 +267,7 @@ class BasicOperations:
         """
         Update an existing issue with new information.
 
-        FORMAT: update_issue(issue_id="DEMO-123", summary="New title", description="Updated description")
+        FORMAT: update_issue(issue_id="DEMO-123", summary="New title", description="Updated description", uses_markdown=True)
 
         Args:
             issue_id: The issue identifier (e.g., "DEMO-123", "PROJECT-456")
@@ -298,20 +335,21 @@ class BasicOperations:
                 }
             },
             "create_issue": {
-                "description": "Create a new issue in YouTrack with automatic project validation. Accepts both project short names (DEMO) and project IDs (0-1). Supports setting custom fields at creation time. Example: create_issue(project='DEMO', summary='Bug in login', description='Users cannot log in', custom_fields={'Assignee': 'john.doe', 'Priority': 'Critical'})",
+                "description": "Create a new issue in YouTrack with automatic project validation. Accepts both project short names (DEMO) and project IDs (0-1). Optional custom_fields for Assignee, Type, State, Priority, Sprints, etc. Example: create_issue(project='DEMO', summary='Bug in login', custom_fields={'Assignee':'admin','Type':'Bug'})",
                 "parameter_descriptions": {
                     "project": "Project identifier (short name like 'DEMO' or ID like '0-1')",
                     "summary": "Issue title/summary (required)",
                     "description": "Detailed description of the issue (optional)",
-                    "custom_fields": "Optional dictionary of custom field names to values to set on creation (e.g., {'Assignee': 'john.doe', 'Priority': 'Critical', 'Fix versions': ['1.0', '1.1']})"
+                    "custom_fields": "Optional dictionary of custom fields, e.g. {\"Assignee\": \"admin\", \"Type\": \"Bug\", \"Priority\": \"Normal\"}",
                 }
             },
             "update_issue": {
-                "description": "Update an existing issue's summary, description, or additional fields. Use for basic issue metadata updates - for custom fields use update_custom_fields. Example: update_issue(issue_id='DEMO-123', summary='Updated title', description='New description')",
+                "description": "Update an existing issue's summary, description, or additional fields. Supports Markdown formatting via uses_markdown. For custom fields use update_custom_fields. Example: update_issue(issue_id='DEMO-123', summary='Updated title', description='**Bold** text', uses_markdown=True)",
                 "parameter_descriptions": {
                     "issue_id": "Issue identifier like 'DEMO-123' or 'PROJECT-456'",
                     "summary": "New issue summary/title (optional)",
-                    "description": "New issue description (optional)",
+                    "description": "New issue description - can include Markdown or HTML (optional)",
+                    "uses_markdown": "Set to True to enable Markdown formatting, False for plain text (optional)",
                     "additional_fields": "Additional fields to update as dictionary (optional)"
                 }
             },

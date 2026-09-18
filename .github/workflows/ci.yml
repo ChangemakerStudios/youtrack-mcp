@@ -480,6 +480,7 @@ jobs:
         npm test
 
     - name: Package validation
+      id: validate
       run: |
         echo "🔍 Validating package before publishing..."
         
@@ -510,10 +511,17 @@ jobs:
         echo "✅ Package validation passed"
 
     - name: Publish to GitHub Packages
+      if: always() && steps.validate.conclusion == 'success'
       run: |
         echo "🚀 Publishing to GitHub Packages..."
-        echo "Package: @changemakerstudios/youtrack-mcp@${{ steps.get_version.outputs.VERSION }}"
-        npm publish
+        VERSION="${{ steps.get_version.outputs.VERSION }}"
+        PKG="@changemakerstudios/youtrack-mcp"
+        echo "Package: ${PKG}@${VERSION}"
+        if npm view "${PKG}@${VERSION}" version --registry=https://npm.pkg.github.com >/dev/null 2>&1; then
+          echo "Already on GitHub Packages — skipping"
+        else
+          npm publish
+        fi
       env:
         NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

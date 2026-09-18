@@ -3,6 +3,7 @@ Wrapper functions for MCP compatibility in the API layer.
 These provide parameter compatibility for MCP function calling.
 """
 
+import json
 import logging
 from typing import Any, Dict, Optional, Callable, List
 
@@ -95,7 +96,10 @@ def add_comment(issue_id: str, text: str) -> Dict[str, Any]:
 
 
 def create_issue(
-    project: str, summary: str, description: Optional[str] = None
+    project: str,
+    summary: str,
+    description: Optional[str] = None,
+    custom_fields: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Create a new issue in a project.
@@ -104,12 +108,13 @@ def create_issue(
         project: The project ID or short name (e.g., "DEMO")
         summary: The issue summary
         description: The issue description (optional)
+        custom_fields: Optional custom fields (Assignee, Type, State, Priority, ...)
 
     Returns:
         Dictionary with the created issue information
 
     Example:
-        >>> create_issue(project="DEMO", summary="Login button not working", description="Users cannot log in after the latest update")
+        >>> create_issue(project="DEMO", summary="Login button not working", description="Users cannot log in after the latest update", custom_fields={"Assignee": "admin"})
     """
     logger.info(
         f"MCP wrapper: create_issue({project}, {summary}, {description and description[:20]}...)"
@@ -144,8 +149,23 @@ def create_issue(
         if not summary:
             return {"error": "Summary is required", "status": "error"}
 
+        additional_fields = None
+        if custom_fields:
+            if isinstance(custom_fields, str):
+                custom_fields = json.loads(custom_fields)
+            field_objects = [
+                issues_api._create_enhanced_field_object(project, name, value)
+                for name, value in custom_fields.items()
+            ]
+            additional_fields = {"customFields": field_objects}
+
         # Create the issue
-        issue = issues_api.create_issue(project, summary, description)
+        if additional_fields:
+            issue = issues_api.create_issue(
+                project, summary, description, additional_fields
+            )
+        else:
+            issue = issues_api.create_issue(project, summary, description)
         return issue.model_dump() if hasattr(issue, "model_dump") else issue
     except Exception as e:
         logger.exception(f"Error creating issue in project {project}")

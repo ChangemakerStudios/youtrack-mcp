@@ -1,43 +1,12 @@
-# Automation Scripts
+# Automation scripts
 
-This directory contains local automation scripts for project management and development workflows.
+Optional local helpers. Releases go through [GitHub Actions](../.github/workflows/ci.yml) (`workflow_dispatch` → `production_release`).
 
-## 🛠️ Available Scripts
+| Script | Purpose |
+| --- | --- |
+| `build-local.sh` | Build and smoke-test a Docker image locally |
+| `create_release.sh` | Create a GitHub release tag |
+| `test_github_access.sh` | Check `gh` auth |
+| `close_pr.sh` / `comment_on_pr.sh` | PR helpers |
 
-### **Release Management**
-- **`create_release.sh`** - Automate GitHub release creation with proper tagging
-- **`build-local.sh`** - Build and test Docker images locally
-- **`RELEASE_INSTRUCTIONS.md`** - Step-by-step guide for creating GitHub releases
-- **`DOCKER_TAGGING.md`** - Docker tagging strategy and deployment documentation
-
-### **GitHub Integration**
-- **`test_github_access.sh`** - Test GitHub API connectivity and permissions
-- **`close_pr.sh`** - Automatically close pull requests with comments
-- **`comment_on_pr.sh`** - Add automated comments to pull requests
-
-## 📋 Usage
-
-All scripts should be run from the project root directory:
-
-```bash
-# Example: Create a new release
-./automations/create_release.sh
-
-# Example: Test GitHub access
-./automations/test_github_access.sh
-
-# Example: Build locally
-./automations/build-local.sh
-```
-
-## 🔧 Prerequisites
-
-Most scripts require:
-- GitHub CLI (`gh`) installed and configured
-- Docker installed (for build scripts)
-- Proper environment variables set (see individual scripts)
-
-## 📁 Related Directories
-
-- **`scripts/`** - Development and CI/CD utility scripts
-- **`.github/workflows/`** - GitHub Actions workflow definitions 
+Run from the repo root, for example `./automations/build-local.sh`.

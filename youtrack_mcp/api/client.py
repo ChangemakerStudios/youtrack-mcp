@@ -196,6 +196,17 @@ class YouTrackClient:
             error_data = response.json()
             if isinstance(error_data, dict) and "error" in error_data:
                 error_message = f"{error_message}: {error_data['error']}"
+                # The bare code (e.g. invalid_query) hides the cause; the parser's
+                # reason ("Can't recognize (") only lives in error_children.
+                if error_data.get("error_description"):
+                    error_message += f": {error_data['error_description']}"
+                details = [
+                    child.get("error")
+                    for child in error_data.get("error_children") or []
+                    if isinstance(child, dict) and child.get("error")
+                ]
+                if details:
+                    error_message += f" ({'; '.join(details)})"
         except (json.JSONDecodeError, KeyError):
             if response.content:
                 error_message = f"{error_message}: {response.content.decode('utf-8', errors='replace')}"

@@ -173,6 +173,28 @@ class TestYouTrackClient:
             client._handle_response(response)
 
     @pytest.mark.unit
+    def test_handle_response_400_includes_description_and_children(self, client):
+        """Test 400 surfaces error_description and error_children details."""
+        response = Mock()
+        response.status_code = 400
+        response.json.return_value = {
+            "error": "invalid_query",
+            "error_description": "Can't parse search query",
+            "error_children": [
+                {"error": "Can't recognize (", "error_description": ""},
+                {"error": "Can't recognize )", "error_description": ""},
+            ],
+        }
+
+        with pytest.raises(ValidationError) as exc_info:
+            client._handle_response(response)
+
+        assert str(exc_info.value) == (
+            "API request failed with status 400: invalid_query: "
+            "Can't parse search query (Can't recognize (; Can't recognize ))"
+        )
+
+    @pytest.mark.unit
     def test_handle_response_401_auth_error(self, client):
         """Test 401 Unauthorized response handling."""
         response = Mock()
